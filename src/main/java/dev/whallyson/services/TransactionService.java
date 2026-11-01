@@ -1,13 +1,19 @@
 package dev.whallyson.services;
 
+import dev.whallyson.dtos.exception.ErrorResponseDTO;
 import dev.whallyson.dtos.requests.RequestTransaction;
 import dev.whallyson.dtos.responses.ResponseAuthorizationTransaction;
+import dev.whallyson.dtos.responses.ResponsePage;
+import dev.whallyson.dtos.responses.ResponseTransaction;
 import dev.whallyson.entitys.transaction.Transaction;
 import dev.whallyson.entitys.user.User;
 import dev.whallyson.entitys.user.UserType;
 import dev.whallyson.exceptions.ApiException;
 import dev.whallyson.exceptions.ErrorCode;
 import dev.whallyson.mocks.AuthorizationTransaction.AuthorizationTransaction;
+import io.quarkus.hibernate.orm.panache.PanacheQuery;
+import io.quarkus.panache.common.Page;
+import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Event;
 import jakarta.persistence.LockModeType;
@@ -17,6 +23,7 @@ import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -82,6 +89,24 @@ public class TransactionService {
         // Os avisos só saem se esta transação fizer commit (o observador roda em AFTER_SUCCESS).
         completed.fire(new TransferCompleted(transaction.id));
         return transaction;
+    }
+
+    // Extrato do usuário: transferências que ele enviou e/ou recebeu, da mais recente para a mais antiga.
+    // direction: "all", "sent" ou "received". O id decresce junto com o tempo, então ordena sem empates.
+    @Transactional
+    public ResponsePage<ResponseTransaction> list(Long userId, String direction, int page, int size) {
+        String filter = switch (direction) {
+            case "all" -> "sender.id = ?1 or receiver.id = ?1";
+            case "sent" -> "sender.id = ?1";
+            case "received" -> "receiver.id = ?1";
+            default -> throw new ApiException(ErrorCode.VALIDATION_ERROR,
+                    List.of(new ErrorResponseDTO.FieldError("direction", "INVALID_DIRECTION")));
+        };
+        PanacheQuery<Transaction> query = Transaction.find(filter, Sort.descending("id"), userId);
+        List<ResponseTransaction> items = query.page(Page.of(page, size)).list().stream()
+                .map(transaction -> ResponseTransaction.from(transaction, userId))
+                .toList();
+        return new ResponsePage<>(items, page, size, query.count());
     }
 
     // Autorizador externo (mock). Falha FECHADA: só uma resposta que afirma data.authorization == true libera.
