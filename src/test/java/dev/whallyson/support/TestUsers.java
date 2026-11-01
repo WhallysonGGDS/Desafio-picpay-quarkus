@@ -48,6 +48,13 @@ public final class TestUsers {
                 User.update("balance = ?1 where id = ?2", new BigDecimal(balance), userId));
     }
 
+    /** POST /transaction autenticado como {@code from}. O remetente nunca vai no corpo. */
+    public static Response transfer(Session from, Object receiverId, Object amount) {
+        return given().cookie("arco_session", from.cookie()).contentType(JSON)
+                .body(Map.of("receiverId", receiverId, "amount", amount))
+                .post("/transaction");
+    }
+
     /** Saldo como a própria API o mostra ao dono da conta. */
     public static String balanceOf(Session session) {
         return given().cookie("arco_session", session.cookie())

@@ -8,7 +8,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 
-@RegisterRestClient(baseUri = "https://util.devi.tools")
+@RegisterRestClient(configKey = "authorizer")
 @Path("/api/v2/authorize")
 public interface AuthorizationTransaction {
 
