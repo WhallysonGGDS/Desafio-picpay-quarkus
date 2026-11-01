@@ -12,6 +12,7 @@ import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Locale;
 
 @ApplicationScoped
@@ -68,6 +69,18 @@ public class UserService {
             throw new ApiException(ErrorCode.UNAUTHENTICATED);
         }
         return user;
+    }
+
+    // Busca de destinatário: correspondência EXATA, nunca por prefixo, para a busca não virar um diretório de usuários.
+    // Se o texto traz "@" ele é um e-mail; se só tem dígitos e a pontuação de CPF/CNPJ, é um documento.
+    // Qualquer outra coisa não encontra ninguém. Nunca devolve o próprio usuário e devolve no máximo um.
+    @Transactional
+    public List<User> lookup(String q, Long exceptId) {
+        String text = q == null ? "" : q.trim();
+        List<User> found = text.matches("[\\d.\\-/\\s]+")
+                ? User.list("document = ?1 and id <> ?2", DocumentValidator.digitsOnly(text), exceptId)
+                : User.list("email = ?1 and id <> ?2", text.toLowerCase(Locale.ROOT), exceptId);
+        return found.stream().limit(1).toList();
     }
 
     // Procura, na cadeia de causas, o nome da restrição única violada.
