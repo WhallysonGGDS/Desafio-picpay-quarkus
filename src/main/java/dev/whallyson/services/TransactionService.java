@@ -9,6 +9,7 @@ import dev.whallyson.exceptions.ApiException;
 import dev.whallyson.exceptions.ErrorCode;
 import dev.whallyson.mocks.AuthorizationTransaction.AuthorizationTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Event;
 import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
@@ -23,11 +24,14 @@ import java.util.stream.Stream;
 public class TransactionService {
 
     private final AuthorizationTransaction authorizer;
+    private final Event<TransferCompleted> completed;
 
     // Injeta dependências
-    // O Quarkus, durante a execução, se encarrega de fornecer o cliente REST do autorizador externo.
-    public TransactionService(@RestClient AuthorizationTransaction authorizer) {
+    // O Quarkus, durante a execução, se encarrega de fornecer o cliente REST do autorizador externo
+    // e o disparador do evento "transferência concluída" (quem avisa as pontas observa esse evento).
+    public TransactionService(@RestClient AuthorizationTransaction authorizer, Event<TransferCompleted> completed) {
         this.authorizer = authorizer;
+        this.completed = completed;
     }
 
     // Tudo acontece em UMA transação de banco: se qualquer regra falhar, nada é gravado.
@@ -74,6 +78,9 @@ public class TransactionService {
         transaction.sender = sender;
         transaction.receiver = receiver;
         transaction.persist();
+
+        // Os avisos só saem se esta transação fizer commit (o observador roda em AFTER_SUCCESS).
+        completed.fire(new TransferCompleted(transaction.id));
         return transaction;
     }
 

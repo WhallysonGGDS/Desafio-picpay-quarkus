@@ -7,4 +7,11 @@ public class RequestSendNotification {
     public String email;
     public String mensagem;
 
+    public RequestSendNotification() {
+    }
+
+    public RequestSendNotification(String email, String mensagem) {
+        this.email = email;
+        this.mensagem = mensagem;
+    }
 }
