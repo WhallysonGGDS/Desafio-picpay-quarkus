@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import dev.whallyson.dtos.MoneySerializer;
 import dev.whallyson.entitys.user.User;
 import dev.whallyson.entitys.user.UserType;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.math.BigDecimal;
 
@@ -14,7 +16,7 @@ public record ResponseUser(
         String lastName,
         String document,
         String email,
-        @JsonSerialize(using = MoneySerializer.class) BigDecimal balance,
+        @JsonSerialize(using = MoneySerializer.class) @Schema(type = SchemaType.STRING, example = "1000.00") BigDecimal balance,
         UserType userType) {
 
     public static ResponseUser from(User user) {

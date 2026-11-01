@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import dev.whallyson.dtos.MoneySerializer;
 import dev.whallyson.entitys.transaction.NotificationStatus;
 import dev.whallyson.entitys.transaction.Transaction;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -12,7 +14,7 @@ import java.time.Instant;
 // ou saldo), a situação dos avisos e a direção (SENT/RECEIVED) relativa a quem consulta.
 public record ResponseTransaction(
         Long id,
-        @JsonSerialize(using = MoneySerializer.class) BigDecimal amount,
+        @JsonSerialize(using = MoneySerializer.class) @Schema(type = SchemaType.STRING, example = "250.00") BigDecimal amount,
         Party sender,
         Party receiver,
         NotificationStatus notifySender,
