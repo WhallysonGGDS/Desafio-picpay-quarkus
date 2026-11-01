@@ -40,7 +40,7 @@ Chave de idempotência no POST de transferência, banco persistente (PostgreSQL/
 |---|---|---|---|
 | POST | `/auth/register` | público | Cria o usuário, já o autentica (grava o cookie) e responde `201` com o perfil. |
 | POST | `/auth/login` | público | Valida credenciais, grava o cookie, responde `200` com o perfil. |
-| POST | `/auth/logout` | autenticado | Expira o cookie, responde `204`. |
+| POST | `/auth/logout` | público | Expira o cookie e responde `204`. É idempotente e funciona mesmo com a sessão já expirada. |
 | GET | `/users/me` | autenticado | Perfil e saldo do usuário autenticado. |
 | GET | `/users/search?q=` | autenticado | Busca de destinatário (4.4). |
 | POST | `/transaction` | autenticado | Cria a transferência (4.3). |
@@ -53,7 +53,7 @@ Corpos principais:
 - **Login:** `email`, `password`.
 - **Perfil (`UserResponse`):** `id`, `firstName`, `lastName`, `document`, `email`, `balance`, `userType`. Nunca inclui senha.
 - **Transferência (entrada):** `receiverId`, `amount`. O remetente **não** vem no corpo. Qualquer `senderId` enviado é ignorado.
-- **Transferência (`TransactionResponse`):** `id`, `amount`, `sender {id, name}`, `receiver {id, name}`, `notifySender`, `notifyReceiver` (`PENDING`, `SENT` ou `FAILED`), `timestamp`.
+- **Transferência (`TransactionResponse`):** `id`, `amount`, `sender {id, name}`, `receiver {id, name}`, `notifySender`, `notifyReceiver` (`PENDING`, `SENT` ou `FAILED`), `timestamp` (ISO-8601 em UTC, por exemplo `2026-11-01T13:05:00Z`) e `direction` (`SENT` ou `RECEIVED`, relativa a quem consulta). O mesmo formato serve ao `POST` e ao extrato.
 
 ### 4.2 Autenticação
 
@@ -62,7 +62,8 @@ Corpos principais:
 - Cookie `arco_session`: `HttpOnly`, `SameSite=Strict`, `Path=/`, `Secure` fora do perfil dev. O token é lido do cookie (`mp.jwt.token.header=Cookie`).
 - Login inválido responde `401 INVALID_CREDENTIALS`, com a mesma mensagem para e-mail desconhecido e senha errada.
 - Proteção contra CSRF: `SameSite=Strict` mais rotas que só aceitam JSON.
-- Nenhuma chave de produção no repositório. Dev e testes usam chaves próprias de teste. Produção recebe as chaves por variável de ambiente.
+- Nenhuma chave no repositório. Se nenhuma chave for configurada, a aplicação gera um par RSA efêmero na inicialização, como configuração de menor prioridade (dev e testes funcionam sem preparo, e as sessões não sobrevivem a um reinício). Produção define as chaves por variável de ambiente (`SMALLRYE_JWT_SIGN_KEY` e `MP_JWT_VERIFY_PUBLICKEY`), que prevalecem sobre a efêmera.
+- A autenticação é preguiçosa (`quarkus.http.auth.proactive=false`). Assim, um cookie de sessão antigo ou inválido enviado a uma rota pública (`/auth/login`, `/auth/register`, `/auth/logout`) é ignorado em vez de provocar `401`. Sem isso, quem tem um cookie expirado não conseguiria nem entrar de novo.
 
 ### 4.3 Regras da transferência
 
@@ -132,7 +133,7 @@ frontend/
   e2e/          Playwright
 ```
 
-O Quinoa (confirmado para o Quarkus 3.15 na Etapa 0) roda o build do front no Maven e o serve na mesma origem. Em desenvolvimento faz proxy para o Vite e entrega o fallback de rotas da SPA. Os prefixos da API (`/auth`, `/users`, `/transaction`, `/q`) ficam fora desse fallback. Plano B se o Quinoa for incompatível: copiar o build do Vite para `META-INF/resources` e registrar uma rota de fallback da SPA. Uma opção de build (`-Dquarkus.quinoa=false`) compila só o back-end.
+O Quinoa (linha 2.5.x, construída contra o Quarkus 3.15.1 e verificada na Etapa 0) roda o build do front no Maven e o serve na mesma origem. Em desenvolvimento faz proxy para o Vite e entrega o fallback de rotas da SPA. Os prefixos da API (`/auth`, `/users`, `/transaction`, `/q`) ficam fora desse fallback. Plano B se o Quinoa for incompatível: copiar o build do Vite para `META-INF/resources` e registrar uma rota de fallback da SPA. Uma opção de build (`-Dquarkus.quinoa=false`) compila só o back-end.
 
 ### 5.2 Camadas
 
