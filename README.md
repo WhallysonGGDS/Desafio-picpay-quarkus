@@ -4,9 +4,9 @@
 
 # PicPay Simplificado
 
-**API REST de transferências entre carteiras, construída com Quarkus.**
+**API REST de carteira e transferências entre usuários, construída com Quarkus.**
 
-Cadastro de usuários, transferências com autorização externa e notificação de quem envia e de quem recebe. Débito, crédito e registro acontecem em uma única transação de banco de dados.
+Cadastro e login com sessão em cookie, busca de destinatário, transferências com autorização externa, notificação de quem envia e de quem recebe, e extrato. Débito, crédito e registro acontecem em uma única transação de banco de dados, com o saldo travado contra concorrência.
 
 <br>
 
@@ -21,6 +21,7 @@ Cadastro de usuários, transferências com autorização externa e notificação
 [Visão geral](#visão-geral) ·
 [Funcionalidades](#funcionalidades) ·
 [Regras de negócio](#regras-de-negócio) ·
+[Sessão e segurança](#sessão-e-segurança) ·
 [Arquitetura](#arquitetura) ·
 [Execução](#instalação-e-execução) ·
 [API](#referência-da-api) ·
@@ -38,6 +39,7 @@ Cadastro de usuários, transferências com autorização externa e notificação
 - [Visão geral](#visão-geral)
 - [Funcionalidades](#funcionalidades)
 - [Regras de negócio](#regras-de-negócio)
+- [Sessão e segurança](#sessão-e-segurança)
 - [Arquitetura](#arquitetura)
 - [Tecnologias utilizadas](#tecnologias-utilizadas)
 - [Pré-requisitos](#pré-requisitos)
@@ -63,63 +65,86 @@ O problema central do desafio é **movimentar saldo entre duas contas de forma c
 
 ### Como funciona
 
-1. Os usuários são cadastrados com um saldo inicial e um perfil (`COMMON` ou `MERCHANT`).
-2. Uma transferência informa remetente, destinatário e valor.
-3. A aplicação valida as regras de negócio, consulta o **serviço autorizador externo** e, se aprovada, debita o remetente, credita o destinatário e registra a transação.
-4. O **serviço de notificação externo** é acionado, e o resultado do envio fica registrado na própria transação.
+1. A pessoa cria a conta (`POST /auth/register`) com o perfil `COMMON` ou `MERCHANT`. O servidor define o saldo inicial de demonstração e já inicia a sessão, em um cookie.
+2. Procura o destinatário por e-mail ou documento (`GET /users/search`).
+3. Pede a transferência informando **só o destinatário e o valor**. O remetente é sempre quem está logado.
+4. A aplicação valida as regras de negócio, trava os dois saldos e consulta o **serviço autorizador externo**. Se aprovada, debita o remetente, credita o destinatário e registra a transação, tudo em uma única transação de banco.
+5. Depois do commit, o **serviço de notificação externo** é acionado para as duas pontas, de forma assíncrona. O resultado de cada aviso fica registrado na própria transação (`PENDING`, `SENT` ou `FAILED`).
+6. O histórico é consultado em `GET /transaction`.
 
 ### Perfis de usuário
 
-| Perfil | Valor do enum | Envia transferências | Recebe transferências |
-| :--- | :--- | :---: | :---: |
-| Usuário comum | `COMMON` | Sim | Sim |
-| Lojista | `MERCHANT` | Não | Sim |
+| Perfil | Valor do enum | Documento | Envia transferências | Recebe transferências | Saldo inicial |
+| :--- | :--- | :--- | :---: | :---: | :--- |
+| Usuário comum | `COMMON` | CPF | Sim | Sim | `app.signup.initial-balance` (padrão R$ 1.000,00) |
+| Lojista | `MERCHANT` | CNPJ | Não | Sim | R$ 0,00 |
 
 ---
 
 ## Funcionalidades
 
-Funcionalidades implementadas no código atual:
-
 | Funcionalidade | Endpoint |
 | :--- | :--- |
-| Cadastrar usuário (comum ou lojista) com saldo inicial | `POST /users` |
-| Listar todos os usuários | `GET /users` |
-| Realizar transferência entre usuários | `POST /transaction` |
+| Cadastrar usuário (comum ou lojista) e iniciar a sessão | `POST /auth/register` |
+| Entrar | `POST /auth/login` |
+| Sair | `POST /auth/logout` |
+| Ver o próprio perfil e saldo | `GET /users/me` |
+| Buscar um destinatário por e-mail ou documento | `GET /users/search?q=` |
+| Realizar transferência | `POST /transaction` |
+| Consultar o extrato (paginado) | `GET /transaction` |
 | Endpoint simples de verificação | `GET /hello` |
 | Especificação OpenAPI gerada automaticamente | `GET /q/openapi` |
 | Swagger UI (somente em modo de desenvolvimento e teste) | `GET /q/swagger-ui` |
 
-O projeto **não** possui, atualmente: autenticação, consulta de extrato ou de transações, atualização ou exclusão de usuários, estorno, nem validação de formato de CPF/CNPJ ou e-mail. Essas possibilidades estão listadas no [Roadmap](#roadmap) como propostas futuras.
+O projeto **não** possui: atualização ou exclusão de usuários, recuperação de senha, estorno, depósito ou saque. As possibilidades de evolução estão no [Roadmap](#roadmap).
 
 ---
 
 ## Regras de negócio
 
-As regras abaixo estão implementadas em `UserService` e `TransactionService` e são verificadas nesta ordem durante uma transferência:
+**Cadastro.** O e-mail é guardado em minúsculas e o documento só com dígitos, e a unicidade vale sobre esses valores (então `ANA@x.com` e `ana@x.com`, ou `529.982.247-25` e `52998224725`, são a mesma conta). O documento precisa ser um **CPF válido** para `COMMON` e um **CNPJ válido** para `MERCHANT` (conferência dos dígitos verificadores). A senha tem de 8 a 72 caracteres e é guardada com BCrypt. O saldo inicial é definido pelo servidor, nunca pelo cliente.
 
-| # | Regra | Onde | Consequência quando violada |
-| :---: | :--- | :--- | :--- |
-| 1 | O remetente precisa existir | `UserService.findUserSenderById` | Erro `Usuário remetente não encontrado` |
-| 2 | O destinatário precisa existir | `UserService.findUserReceiverById` | Erro `Usuário destinatário não encontrado` |
-| 3 | Lojistas (`MERCHANT`) não podem enviar | `UserService.validadeTransaction` | Erro `Usuário do tipo lojista não está autorizado a realizar transferências` |
-| 4 | O saldo do remetente precisa ser maior ou igual ao valor | `UserService.validadeTransaction` | Erro `Saldo insuficiente` |
-| 5 | O autorizador externo precisa responder com sucesso (HTTP 2xx) | `TransactionService.authorizeTransaction` | Erro `Transferência recusada pelo serviço de autorização` |
+**Transferência.** As regras são verificadas nesta ordem:
+
+| # | Regra | Resposta quando violada |
+| :---: | :--- | :--- |
+| 1 | `receiverId` e `amount` informados; `amount` maior que zero, com até 15 dígitos inteiros e 2 casas decimais | `400` · `VALIDATION_ERROR` (`REQUIRED`, `INVALID_AMOUNT`) |
+| 2 | Remetente e destinatário são pessoas diferentes | `422` · `SELF_TRANSFER` |
+| 3 | O destinatário existe | `404` · `USER_NOT_FOUND` |
+| 4 | Lojistas (`MERCHANT`) não enviam | `403` · `MERCHANT_CANNOT_SEND` |
+| 5 | O saldo do remetente cobre o valor | `422` · `INSUFFICIENT_BALANCE` |
+| 6 | O autorizador externo responde com sucesso **e** `data.authorization == true` | `422` · `AUTHORIZATION_DENIED` (recusa) ou `503` · `AUTHORIZER_UNAVAILABLE` (fora do ar) |
 
 Comportamentos adicionais:
 
-- **Atomicidade.** `createTransaction` é anotado com `@Transactional`. Uma exceção em qualquer etapa provoca *rollback*, e nenhum saldo é alterado.
-- **Notificação não bloqueante.** Se o serviço de notificação responder com erro HTTP, a transferência é concluída mesmo assim. O resultado fica nos campos `notifySender` e `notifyReceiver` da transação: `Notificação enviada com sucesso` ou `Falha ao enviar a notificação`.
-- **Unicidade de cadastro.** Os campos `document` e `email` têm restrição `UNIQUE` no banco. Um cadastro duplicado retorna `400`.
-- **Diferença entre perfis.** O perfil só interfere no **envio**. Um lojista pode receber transferências normalmente, mas qualquer tentativa de enviar é recusada antes da consulta ao autorizador.
+- **Atomicidade.** `TransactionService.transfer` é `@Transactional`. Uma exceção em qualquer etapa provoca *rollback*, e nenhum saldo é alterado.
+- **Remetente é sempre o usuário logado.** O corpo da requisição não tem campo de remetente; um `senderId` enviado é ignorado.
+- **Concorrência.** Os dois saldos são lidos com *lock* pessimista de escrita (`PESSIMISTIC_WRITE`), em ordem crescente de id para evitar deadlock. Duas transferências simultâneas do mesmo remetente nunca deixam a conta negativa.
+- **Autorizador com falha fechada.** Só uma resposta que afirma `data.authorization == true` libera a transferência. `403` ou `authorization: false` é recusa; falha de rede, *timeout* e `5xx` são indisponibilidade. Em nenhum caso a transferência acontece sem aprovação.
+- **Notificação após o commit.** Os avisos saem depois que a transferência foi gravada, fora da requisição e fora da transação. A transação nasce com os dois avisos em `PENDING`; cada um vira `SENT` ou `FAILED` (3 tentativas, 200 ms entre elas). **Falha de aviso nunca desfaz a transferência.**
+- **Diferença entre perfis.** O perfil só interfere no **envio**. Um lojista pode receber normalmente, mas qualquer tentativa de enviar é recusada antes da consulta ao autorizador.
 
-> **Importante:** o autorizador é avaliado apenas pelo **código HTTP** da resposta. O campo `data.authorization` do corpo é desserializado, mas não é verificado.
+> O autorizador público do desafio **recusa parte das requisições propositalmente** (responde `403`). É esperado que uma transferência válida às vezes seja negada com `AUTHORIZATION_DENIED`. Basta repetir a requisição.
+
+---
+
+## Sessão e segurança
+
+| Tema | Como funciona |
+| :--- | :--- |
+| Sessão | JWT em um cookie **`arco_session`**: `HttpOnly` (o JavaScript nunca vê o token), `SameSite=Strict`, `Path=/`, validade de 1 hora e `Secure` fora dos perfis `dev` e `test`. O token carrega só o id do usuário (`sub`); o perfil sempre vem do banco. |
+| Autenticação preguiçosa | `quarkus.http.auth.proactive=false`. Um cookie velho ou inválido enviado a uma rota **pública** (`/auth/login`, `/auth/register`, `/auth/logout`) é ignorado, e quem tem o cookie vencido consegue entrar de novo. Em rota protegida vira `401 UNAUTHENTICATED`. |
+| CSRF | `SameSite=Strict` mais a exigência de `Content-Type: application/json` em **todo** `POST`, inclusive o logout sem corpo. Um `<form>` de outro site não consegue enviar esse tipo de conteúdo. |
+| Senha | BCrypt. Nenhuma resposta contém `password` ou `passwordHash`: as entidades nunca são serializadas, só DTOs. |
+| Login | E-mail desconhecido e senha errada respondem igual (`401 INVALID_CREDENTIALS`), com custo de BCrypt parecido, para não revelar quais contas existem. |
+| Busca de destinatário | Correspondência **exata** (nunca por prefixo), no máximo um resultado, nunca o próprio usuário, e só `id`, nome, tipo e documento mascarado. Sem saldo e sem e-mail. |
+| Chaves do JWT | Nenhuma chave fica no repositório. Se nada for configurado, um par RSA **efêmero** é gerado a cada inicialização (as sessões caem a cada reinício). Em produção, defina as chaves por variável de ambiente (veja [Configuração](#chaves-do-jwt-em-produção)). |
 
 ---
 
 ## Arquitetura
 
-A aplicação segue uma arquitetura em camadas, com o Quarkus provendo injeção de dependência (CDI/ArC), camada REST (JAX-RS) e controle transacional (JTA).
+A aplicação segue uma arquitetura em camadas, com o Quarkus provendo injeção de dependência (CDI/ArC), camada REST (JAX-RS), segurança (SmallRye JWT) e controle transacional (JTA).
 
 ```mermaid
 flowchart LR
@@ -127,11 +152,12 @@ flowchart LR
 
     subgraph APP["Aplicação Quarkus"]
         direction LR
-        CTRL["Controllers<br/>UserController<br/>TransactionController"]
-        SVC["Services<br/>UserService<br/>TransactionService"]
+        CTRL["Controllers<br/>AuthController<br/>UserController<br/>TransactionController"]
+        SEC["Sessão<br/>TokenService · SessionCookie<br/>CurrentUser"]
+        SVC["Services<br/>UserService<br/>TransactionService<br/>NotificationDispatcher"]
         ENT["Entities Panache<br/>User · Transaction"]
         RC["REST Clients<br/>AuthorizationTransaction<br/>SendNotification"]
-        EXC["Exception Mappers<br/>GlobalExceptionHandler<br/>DataIntegrityViolationExceptionMapper"]
+        EXC["Exception Mappers<br/>ApiExceptionMapper<br/>ConstraintViolationMapper<br/>GlobalExceptionHandler"]
     end
 
     DB[("H2 em memória")]
@@ -139,6 +165,7 @@ flowchart LR
     NOT["Notificação<br/>util.devi.tools"]
 
     CLI --> CTRL
+    CTRL --> SEC
     CTRL --> SVC
     SVC --> ENT
     ENT --> DB
@@ -153,23 +180,26 @@ flowchart LR
 
 | Camada | Pacote | Responsabilidade |
 | :--- | :--- | :--- |
-| API (apresentação) | `controllers` | Recursos JAX-RS. Recebem JSON, delegam aos serviços e devolvem `201 Created` ou `200 OK`. |
-| Serviços | `services` | Regras de negócio, orquestração da transferência e demarcação transacional com `@Transactional`. |
-| Entidades | `entitys` | Modelo persistente com Hibernate ORM + Panache no padrão *Active Record* (`PanacheEntityBase`). |
-| DTOs | `dtos` | Corpo da requisição de transferência, contratos dos serviços externos e formato padrão de erro. |
+| API (apresentação) | `controllers` | Recursos JAX-RS. Recebem JSON, delegam aos serviços e devolvem DTOs com `201 Created`, `200 OK` ou `204`. |
+| Serviços | `services` | Regras de negócio, orquestração da transferência, demarcação transacional e envio assíncrono de avisos. |
+| Entidades | `entitys` | Modelo persistente com Hibernate ORM + Panache no padrão *Active Record* (`PanacheEntityBase`). Nunca saem pela API. |
+| DTOs | `dtos` | Corpos de requisição e resposta, contratos dos serviços externos e o formato padrão de erro. |
+| Erros | `exceptions` | `ErrorCode` (status e código estável) e `ApiException`. |
+| Validação | `validation` | CPF/CNPJ por dígito verificador, máscara de documento e a constraint `@ValidDocument`. |
 | Integrações | `mocks` | Interfaces MicroProfile REST Client para o autorizador e para o serviço de notificação. |
-| Infraestrutura | `infra` | `ExceptionMapper`s que convertem exceções em respostas JSON. |
+| Infraestrutura | `infra` | `ExceptionMapper`s, dados de demonstração e, em `infra/security`, token, cookie e usuário atual. |
 
 ### Tratamento de exceções
 
-Há dois mapeadores registrados com `@Provider`:
+Toda falha vira o mesmo corpo `{statusCode, code, message, fieldErrors?}`, com um `code` estável que o cliente usa como contrato.
 
 | Mapeador | Captura | Resposta |
 | :--- | :--- | :--- |
-| `DataIntegrityViolationExceptionMapper` | `PersistenceException` | `400` com mensagem de integridade de dados |
-| `GlobalExceptionHandler` | `Exception` (todas as demais) | `500` com a mensagem da exceção |
-
-As regras de negócio lançam `java.lang.Exception` genérica, por isso **todos os erros de negócio retornam `500`**. Detalhes em [Limitações conhecidas](#limitações-conhecidas).
+| `ApiExceptionMapper` | `ApiException` (erros de negócio) | status do `ErrorCode` |
+| `ConstraintViolationMapper` | `ConstraintViolationException` | `400` · `VALIDATION_ERROR`, com um erro por campo |
+| `JsonErrorMapper` · `MismatchedInputMapper` | JSON malformado ou com tipo errado | `400` · `VALIDATION_ERROR` |
+| `SecurityExceptionMappers` | sessão ausente ou inválida | `401` · `UNAUTHENTICATED` |
+| `GlobalExceptionHandler` | exceções HTTP do JAX-RS e as demais | mantém o status (`404`, `405`, `415`...); qualquer falha inesperada vira `500` · `INTERNAL_ERROR`, sem detalhes |
 
 ### Fluxo principal: transferência
 
@@ -179,34 +209,36 @@ sequenceDiagram
     actor C as Cliente
     participant TC as TransactionController
     participant TS as TransactionService
-    participant US as UserService
     participant DB as H2
     participant AUT as Autorizador
+    participant ND as NotificationDispatcher
     participant NOT as Notificação
 
-    C->>TC: POST /transaction
-    TC->>TS: createTransaction(request)
+    C->>TC: POST /transaction (cookie de sessão)
+    TC->>TS: transfer(idDoCookie, corpo)
     Note over TS,DB: início da transação (@Transactional)
-    TS->>US: findUserSenderById / findUserReceiverById
-    US->>DB: User.findById
-    TS->>US: validadeTransaction(sender, amount)
+    TS->>DB: trava os dois saldos (ordem crescente de id)
+    TS->>TS: lojista? saldo suficiente?
     TS->>AUT: GET /api/v2/authorize
-    alt erro HTTP do autorizador
-        AUT-->>TS: 4xx / 5xx
-        TS-->>C: 500 · rollback
-    else autorizado (2xx)
-        AUT-->>TS: 200
-        TS->>TS: debita remetente e credita destinatário
-        TS->>NOT: POST /api/v1/notify (remetente)
-        TS->>NOT: POST /api/v1/notify (destinatário)
-        TS->>DB: persiste usuários e transação
+    alt recusado (403 ou authorization=false)
+        AUT-->>TS: negado
+        TS-->>C: 422 AUTHORIZATION_DENIED · rollback
+    else indisponível (rede, timeout, 5xx)
+        TS-->>C: 503 AUTHORIZER_UNAVAILABLE · rollback
+    else autorizado
+        AUT-->>TS: authorization = true
+        TS->>DB: debita, credita e grava a transação (avisos PENDING)
         Note over TS,DB: commit
         TS-->>TC: Transaction
         TC-->>C: 201 Created
+        TS->>ND: TransferCompleted (só depois do commit)
+        ND->>NOT: POST /api/v1/notify (remetente)
+        ND->>NOT: POST /api/v1/notify (destinatário)
+        ND->>DB: grava SENT ou FAILED
     end
 ```
 
-As duas chamadas de notificação ocorrem **antes do commit**, ainda dentro da transação.
+A resposta `201` não espera os avisos: eles saem depois, em outra thread.
 
 ---
 
@@ -222,6 +254,9 @@ As duas chamadas de notificação ocorrem **antes do commit**, ainda dentro da t
 | Quarkus REST + REST Jackson | gerenciada pelo BOM | Endpoints JAX-RS e serialização JSON |
 | Quarkus REST Client + REST Client Jackson | gerenciada pelo BOM | Clientes declarativos dos serviços externos |
 | Hibernate ORM com Panache | gerenciada pelo BOM | Mapeamento objeto-relacional no padrão *Active Record* |
+| Hibernate Validator | gerenciada pelo BOM | Bean Validation dos corpos e parâmetros |
+| SmallRye JWT (`quarkus-smallrye-jwt` e `-build`) | gerenciada pelo BOM | Emissão e verificação do JWT da sessão |
+| Elytron Security Common | gerenciada pelo BOM | BCrypt para a senha |
 | Narayana JTA | gerenciada pelo BOM (transitiva) | Suporte a `@Transactional` |
 | H2 (`quarkus-jdbc-h2`) | gerenciada pelo BOM | Banco relacional em memória |
 | SmallRye OpenAPI | gerenciada pelo BOM | Especificação OpenAPI e Swagger UI |
@@ -235,6 +270,9 @@ As duas chamadas de notificação ocorrem **antes do commit**, ainda dentro da t
 | Maven Surefire / Failsafe | 3.3.1 | Testes e testes de integração |
 | JUnit 5 (`quarkus-junit5`) | gerenciada pelo BOM | Framework de testes |
 | REST Assured | gerenciada pelo BOM | Testes de API HTTP |
+| Mockito (`quarkus-junit5-mockito`) | gerenciada pelo BOM | Substitui os serviços externos nos testes |
+| Awaitility | gerenciada pelo BOM | Espera pelos avisos assíncronos nos testes |
+| Node.js | 22 (opcional) | Stub dos serviços externos e smoke test |
 
 ---
 
@@ -243,8 +281,9 @@ As duas chamadas de notificação ocorrem **antes do commit**, ainda dentro da t
 | Requisito | Detalhe |
 | :--- | :--- |
 | JDK 21 | O projeto compila com `release 21`. |
-| Acesso à internet | No primeiro build, para baixar o Maven e as dependências. Em execução, para alcançar os serviços externos em `util.devi.tools`. |
+| Acesso à internet | No primeiro build, para baixar o Maven e as dependências. Em execução, para alcançar os serviços externos em `util.devi.tools` (ou use o [stub local](#sem-acesso-ao-utildevitools-stub-local)). |
 | Git | Para clonar o repositório. |
+| Node.js 22 | **Opcional.** Só para `scripts/stub-externals.mjs` e `scripts/smoke-api.mjs`. |
 | GraalVM ou Docker/Podman | Somente para a compilação nativa (opcional). |
 
 Não é necessário instalar o Maven: o Maven Wrapper (`mvnw` / `mvnw.cmd`) baixa a versão configurada automaticamente. Também não é necessário instalar banco de dados, porque o H2 roda em memória dentro da aplicação.
@@ -268,7 +307,15 @@ Inicia a aplicação com *live reload*: alterações no código são recarregada
 ./mvnw quarkus:dev
 ```
 
-A API fica disponível em `http://localhost:8080`. No modo de desenvolvimento também estão disponíveis:
+A API fica disponível em `http://localhost:8080`. No modo de desenvolvimento a propriedade `app.seed.enabled` vem ligada e cria **contas de demonstração** (senha `demo1234`):
+
+| Conta | E-mail | Perfil | Saldo |
+| :--- | :--- | :--- | :--- |
+| Marina Alves | `marina@arco.demo` | `COMMON` | R$ 1.000,00 |
+| Rafael Costa | `rafael@arco.demo` | `COMMON` | R$ 500,00 |
+| Loja Arco | `loja@arco.demo` | `MERCHANT` | R$ 0,00 |
+
+Também estão disponíveis:
 
 | Recurso | Endereço |
 | :--- | :--- |
@@ -288,7 +335,7 @@ Detalhes na seção [Testes](#testes).
 
 ### 4. Empacotar
 
-Gera o artefato em `target/quarkus-app/`:
+Gera o artefato em `target/quarkus-app/` e grava o esquema OpenAPI em `target/openapi/`:
 
 ```bash
 ./mvnw package
@@ -310,7 +357,30 @@ java -jar target/quarkus-app/quarkus-run.jar
 java -jar target/picpay-simplificado-1.0.0-SNAPSHOT-runner.jar
 ```
 
+No perfil de produção o cookie de sessão é `Secure`: o navegador só o aceita por HTTPS (ou em `localhost`). Para testar por HTTP puro, acrescente `-Dapp.jwt.cookie-secure=false`. As contas de demonstração ficam desligadas por padrão; para criá-las, use `-Dapp.seed.enabled=true`.
+
 Fora do modo de desenvolvimento o Swagger UI não é incluído, mas a especificação continua disponível em `/q/openapi`.
+
+### Sem acesso ao `util.devi.tools` (stub local)
+
+O repositório traz um stub dos dois serviços externos, com modos para simular recusa e indisponibilidade. Ele serve para desenvolver sem internet e para os testes de ponta a ponta.
+
+```bash
+# 1. sobe o stub na porta 9000 (STUB_PORT muda a porta)
+node scripts/stub-externals.mjs &
+
+# 2. aponta a aplicação para o stub
+java -Dapp.seed.enabled=true -Dapp.jwt.cookie-secure=false \
+     -Dquarkus.rest-client.authorizer.url=http://localhost:9000 \
+     -Dquarkus.rest-client.notifier.url=http://localhost:9000 \
+     -jar target/quarkus-app/quarkus-run.jar
+```
+
+| Rota do stub | Para quê |
+| :--- | :--- |
+| `POST /__mode` com `{"authorize":"grant\|deny\|down","notify":"ok\|fail"}` | Aprova, recusa (`403`) ou derruba o autorizador; faz o notificador responder `204` ou `503` |
+| `GET /__calls` | Quantas consultas ao autorizador e quais avisos chegaram (e-mail e mensagem) |
+| `POST /__reset` | Zera as chamadas e volta aos modos padrão |
 
 ### 6. Compilação nativa (opcional)
 
@@ -333,41 +403,58 @@ O `pom.xml` define o perfil `native`, ativado pela propriedade `-Dnative`:
 
 ## Configuração
 
-O projeto não usa arquivo `.env` nem variáveis de ambiente próprias. A configuração está em `src/main/resources/application.properties`:
+A configuração está em `src/main/resources/application.properties`. Qualquer propriedade pode ser sobrescrita com `-D` ou variável de ambiente.
 
-| Propriedade | Valor atual | Finalidade |
+| Propriedade | Valor | Finalidade |
 | :--- | :--- | :--- |
 | `quarkus.datasource.db-kind` | `h2` | Tipo de banco de dados |
-| `quarkus.datasource.jdbc.url` | `jdbc:h2:mem:picpay` | Banco H2 em memória (os dados se perdem ao encerrar a aplicação) |
-| `quarkus.datasource.username` | `sa` | Usuário padrão do H2 local |
-| `quarkus.datasource.password` | *(vazio)* | Senha do H2 local |
+| `quarkus.datasource.jdbc.url` | `jdbc:h2:mem:picpay;INIT=SET LOCK_TIMEOUT 10000` | Banco H2 em memória (os dados se perdem ao encerrar). O `LOCK_TIMEOUT` de 10 s faz uma transferência esperar o lock de saldo de outra, que pode estar aguardando o autorizador |
+| `quarkus.datasource.username` / `password` | `sa` / *(vazio)* | Credenciais padrão de um H2 em memória local, não de um ambiente real |
 | `quarkus.hibernate-orm.database.generation` | `drop-and-create` | Recria o esquema a cada inicialização |
 | `quarkus.hibernate-orm.dialect` | `org.hibernate.dialect.H2Dialect` | Dialeto SQL |
-| `quarkus.hibernate-orm.log.sql` | `false` | Log das instruções SQL |
-| `quarkus.hibernate-orm.log.bind-parameters` | `false` | Log dos parâmetros das instruções SQL |
-
-As credenciais acima são as padrão de um banco H2 em memória local, não de um ambiente real.
+| `quarkus.hibernate-orm.log.sql` · `log.bind-parameters` | `false` | Log das instruções SQL e dos parâmetros |
+| `app.signup.initial-balance` | `1000.00` | Saldo inicial de todo usuário comum (lojista começa com `0.00`) |
+| `app.seed.enabled` | `false` (`true` em `%dev`) | Cria as contas de demonstração na inicialização |
+| `app.jwt.lifetime` | `PT1H` | Validade da sessão |
+| `app.jwt.cookie-secure` | `true` (`false` em `%dev` e `%test`) | Marca o cookie de sessão como `Secure` |
+| `mp.jwt.token.cookie` | `arco_session` | Nome do cookie que carrega o JWT |
+| `mp.jwt.verify.issuer` | `arco` | Emissor esperado no token |
+| `quarkus.http.auth.proactive` | `false` | Autenticação preguiçosa (veja [Sessão e segurança](#sessão-e-segurança)) |
+| `quarkus.smallrye-openapi.store-schema-directory` | `target/openapi` | Onde o esquema OpenAPI é gravado no build |
 
 ### Serviços externos
 
-As URLs base dos clientes REST estão definidas nas anotações `@RegisterRestClient(baseUri = "https://util.devi.tools")`:
+Os clientes REST são configurados por chave (`@RegisterRestClient(configKey = ...)`), então URL e *timeouts* ficam no `application.properties`:
 
-| Cliente | Método | Endpoint |
-| :--- | :---: | :--- |
-| `AuthorizationTransaction` | `GET` | `https://util.devi.tools/api/v2/authorize` |
-| `SendNotification` | `POST` | `https://util.devi.tools/api/v1/notify` |
+| Cliente | Chave | Endpoint | Timeout de conexão / leitura |
+| :--- | :--- | :--- | :--- |
+| `AuthorizationTransaction` (`GET`) | `authorizer` | `https://util.devi.tools/api/v2/authorize` | 1 s / **3 s** |
+| `SendNotification` (`POST`) | `notifier` | `https://util.devi.tools/api/v1/notify` | 1 s / 2 s |
+
+O timeout do autorizador é curto de propósito: os locks de saldo ficam retidos enquanto ele responde. A URL de cada um é `quarkus.rest-client.<chave>.url`.
+
+### Chaves do JWT em produção
+
+Sem configuração, a aplicação gera um par RSA efêmero na inicialização (e registra um aviso). Em produção, defina o **conteúdo** PEM das chaves por variável de ambiente; elas prevalecem sobre a chave efêmera, e as sessões passam a sobreviver a reinícios:
+
+```bash
+# gera um par (chave privada em PKCS#8)
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out private.pem
+openssl pkey -in private.pem -pubout -out public.pem
+
+# o conteúdo do PEM, não o caminho do arquivo
+export SMALLRYE_JWT_SIGN_KEY="$(cat private.pem)"
+export MP_JWT_VERIFY_PUBLICKEY="$(cat public.pem)"
+```
 
 ### Sobrescrevendo propriedades
-
-Como em qualquer aplicação Quarkus, as propriedades podem ser sobrescritas na inicialização com `-D`. Exemplos:
 
 ```bash
 # alterar a porta HTTP
 java -Dquarkus.http.port=8090 -jar target/quarkus-app/quarkus-run.jar
 
 # apontar o cliente de autorização para outro endereço
-java -Dquarkus.rest-client.\"dev.whallyson.mocks.AuthorizationTransaction.AuthorizationTransaction\".url=http://localhost:9000 \
-     -jar target/quarkus-app/quarkus-run.jar
+java -Dquarkus.rest-client.authorizer.url=http://localhost:9000 -jar target/quarkus-app/quarkus-run.jar
 ```
 
 ---
@@ -375,195 +462,261 @@ java -Dquarkus.rest-client.\"dev.whallyson.mocks.AuthorizationTransaction.Author
 ## Referência da API
 
 - **URL base:** `http://localhost:8080`
-- **Formato:** todas as rotas de negócio consomem e produzem `application/json`.
-- **Autenticação:** não há.
-- **Cabeçalho obrigatório nas requisições `POST`:** `Content-Type: application/json`. Sem ele, a resposta é `500` com a mensagem `The content-type header value did not match the value in @Consumes`.
+- **Formato:** JSON (`application/json`) na entrada e na saída.
+- **Autenticação:** cookie de sessão `arco_session`, definido por `/auth/register` e `/auth/login`. Nos exemplos, `-c cookies.txt` grava o cookie e `-b cookies.txt` o envia.
+- **Cabeçalho obrigatório em todo `POST`:** `Content-Type: application/json`, **inclusive no logout, que não tem corpo**. Sem ele a resposta é `415` com `code: "HTTP_415"`.
+- **Dinheiro:** sempre **string com duas casas** nas respostas (`"1250.00"`), nunca número JSON. Nas requisições, `amount` aceita string (`"250.00"`) ou número.
+- **Erros:** todos no mesmo formato (veja [Formato padrão de erro](#formato-padrão-de-erro)).
 
-Os exemplos abaixo usam dados fictícios.
+Os exemplos abaixo são respostas reais, obtidas com o app empacotado e o [stub dos serviços externos](#sem-acesso-ao-utildevitools-stub-local).
 
 ### Resumo
 
-| Método | Caminho | Finalidade | Sucesso |
-| :---: | :--- | :--- | :---: |
-| `GET` | `/users` | Listar usuários | `200` |
-| `POST` | `/users` | Cadastrar usuário | `201` |
-| `POST` | `/transaction` | Realizar transferência | `201` |
-| `GET` | `/hello` | Verificação simples (texto) | `200` |
+| Método | Caminho | Acesso | Finalidade | Sucesso |
+| :---: | :--- | :---: | :--- | :---: |
+| `POST` | `/auth/register` | público | Cadastrar usuário e iniciar a sessão | `201` |
+| `POST` | `/auth/login` | público | Entrar | `200` |
+| `POST` | `/auth/logout` | público | Sair (expira o cookie) | `204` |
+| `GET` | `/users/me` | sessão | Perfil e saldo de quem está logado | `200` |
+| `GET` | `/users/search` | sessão | Buscar destinatário | `200` |
+| `POST` | `/transaction` | sessão | Realizar transferência | `201` |
+| `GET` | `/transaction` | sessão | Extrato paginado | `200` |
+| `GET` | `/hello` | público | Verificação simples (texto) | `200` |
+
+Rota protegida sem sessão válida responde `401` · `UNAUTHENTICATED`.
 
 ---
 
-### `POST /users`
+### `POST /auth/register`
 
-Cadastra um usuário. O corpo é desserializado diretamente na entidade `User`.
+Cria a conta e já inicia a sessão (o cookie vem no `Set-Cookie`). O saldo inicial é definido pelo servidor.
 
 **Corpo da requisição**
 
-| Campo | Tipo | Observação |
+| Campo | Tipo | Regra |
 | :--- | :--- | :--- |
-| `firstName` | `string` | Nome |
-| `lastName` | `string` | Sobrenome |
-| `document` | `string` | CPF ou CNPJ. Único no banco. |
-| `email` | `string` | Único no banco. |
-| `password` | `string` | Armazenada e retornada em texto puro. |
-| `balance` | `number` | Saldo inicial. |
-| `userType` | `string` | `COMMON` ou `MERCHANT`. |
+| `firstName` | `string` | Obrigatório, até 80 caracteres |
+| `lastName` | `string` | Obrigatório, até 80 caracteres |
+| `document` | `string` | CPF (`COMMON`) ou CNPJ (`MERCHANT`) válido, com ou sem pontuação. Único |
+| `email` | `string` | Formato válido, até 160 caracteres. Único |
+| `password` | `string` | De 8 a 72 caracteres |
+| `userType` | `string` | `COMMON` ou `MERCHANT` |
 
-Nenhum campo é validado como obrigatório pela aplicação. Veja [Limitações conhecidas](#limitações-conhecidas).
-
-**Exemplo**
+Espaços nas pontas dos textos são removidos (menos na senha).
 
 ```bash
-curl -X POST http://localhost:8080/users \
+curl -i -c cookies.txt -X POST http://localhost:8080/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "firstName": "Maria",
     "lastName": "Souza",
-    "document": "00000000001",
-    "email": "maria@exemplo.com",
+    "document": "390.533.447-05",
+    "email": "Maria@Exemplo.com",
     "password": "exemplo123",
-    "balance": 500.00,
     "userType": "COMMON"
   }'
 ```
 
 **Resposta `201 Created`**
 
+```http
+Set-Cookie: arco_session=<jwt>;Version=1;Path=/;Max-Age=3600;HttpOnly;SameSite=Strict
+```
+
 ```json
 {
-  "id": 1,
+  "id": 4,
   "firstName": "Maria",
   "lastName": "Souza",
-  "document": "00000000001",
+  "document": "39053344705",
   "email": "maria@exemplo.com",
-  "password": "exemplo123",
-  "balance": 500.00,
+  "balance": "1000.00",
   "userType": "COMMON"
 }
 ```
 
 **Erros**
 
-| Situação | Status | Corpo |
+| Situação | Status | `code` |
 | :--- | :---: | :--- |
-| `document` ou `email` já cadastrado | `400` | `{"statusCode":400,"message":"Violação de chave única no banco de dados."}` |
-| `userType` com valor fora do enum | `400` | corpo vazio |
-| JSON malformado | `500` | `{"statusCode":500,"message":"HTTP 400 Bad Request"}` |
+| Campo ausente, formato inválido, senha curta, CPF/CNPJ inválido ou de outro tipo | `400` | `VALIDATION_ERROR`, com `fieldErrors` (`REQUIRED`, `TOO_LONG`, `INVALID_EMAIL`, `PASSWORD_LENGTH`, `INVALID_DOCUMENT`) |
+| E-mail já cadastrado | `409` | `DUPLICATE_EMAIL` |
+| Documento já cadastrado | `409` | `DUPLICATE_DOCUMENT` |
+
+```json
+{"statusCode":400,"code":"VALIDATION_ERROR","message":"Dados inválidos.","fieldErrors":[{"field":"document","code":"REQUIRED"},{"field":"email","code":"REQUIRED"},{"field":"firstName","code":"REQUIRED"},{"field":"lastName","code":"REQUIRED"},{"field":"password","code":"REQUIRED"},{"field":"userType","code":"REQUIRED"}]}
+```
 
 ---
 
-### `GET /users`
-
-Retorna todos os usuários cadastrados, incluindo o campo `password`.
+### `POST /auth/login`
 
 ```bash
-curl http://localhost:8080/users
+curl -i -c cookies.txt -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "marina@arco.demo", "password": "demo1234"}'
 ```
 
-**Resposta `200 OK`**
+**Resposta `200 OK`**: o mesmo perfil do cadastro e o `Set-Cookie`. E-mail desconhecido e senha errada respondem igual:
+
+```json
+{"statusCode":401,"code":"INVALID_CREDENTIALS","message":"E-mail ou senha incorretos."}
+```
+
+---
+
+### `POST /auth/logout`
+
+Expira o cookie (`Max-Age=0`) e responde `204`. É público e idempotente: funciona mesmo com a sessão já vencida.
+
+```bash
+curl -i -b cookies.txt -X POST http://localhost:8080/auth/logout -H "Content-Type: application/json"
+```
+
+---
+
+### `GET /users/me`
+
+Perfil e saldo de quem está logado.
+
+```bash
+curl -b cookies.txt http://localhost:8080/users/me
+```
+
+```json
+{
+  "id": 4,
+  "firstName": "Maria",
+  "lastName": "Souza",
+  "document": "39053344705",
+  "email": "maria@exemplo.com",
+  "balance": "1000.00",
+  "userType": "COMMON"
+}
+```
+
+---
+
+### `GET /users/search`
+
+Busca um destinatário por **e-mail** ou **documento** (CPF/CNPJ, com ou sem pontuação). A correspondência é exata; `q` precisa de pelo menos 3 caracteres. Devolve uma lista com 0 ou 1 item, nunca o próprio usuário.
+
+```bash
+curl -b cookies.txt "http://localhost:8080/users/search?q=rafael@arco.demo"
+```
 
 ```json
 [
   {
-    "id": 1,
-    "firstName": "Maria",
-    "lastName": "Souza",
-    "document": "00000000001",
-    "email": "maria@exemplo.com",
-    "password": "exemplo123",
-    "balance": 500.00,
-    "userType": "COMMON"
-  },
-  {
     "id": 2,
-    "firstName": "Loja",
-    "lastName": "Exemplo",
-    "document": "00000000000100",
-    "email": "loja@exemplo.com",
-    "password": "exemplo123",
-    "balance": 0,
-    "userType": "MERCHANT"
+    "firstName": "Rafael",
+    "lastName": "Costa",
+    "userType": "COMMON",
+    "maskedDocument": "***.444.777-**"
   }
 ]
 ```
+
+| Situação | Status | Corpo |
+| :--- | :---: | :--- |
+| `q` com menos de 3 caracteres | `400` | `VALIDATION_ERROR`, `fieldErrors: [{"field":"q","code":"QUERY_TOO_SHORT"}]` |
+| `q` ausente | `400` | `VALIDATION_ERROR`, `REQUIRED` |
+| Ninguém encontrado | `200` | `[]` |
 
 ---
 
 ### `POST /transaction`
 
-Transfere um valor do remetente para o destinatário seguindo as [regras de negócio](#regras-de-negócio).
+Transfere um valor de quem está logado para o destinatário, seguindo as [regras de negócio](#regras-de-negócio).
 
-**Corpo da requisição** (`RequestTransaction`)
+**Corpo da requisição**
 
 | Campo | Tipo | Observação |
 | :--- | :--- | :--- |
-| `senderId` | `number` (Long) | ID do remetente |
 | `receiverId` | `number` (Long) | ID do destinatário |
-| `amount` | `number` (BigDecimal) | Valor a transferir |
+| `amount` | `string` ou `number` | Maior que zero, até 2 casas decimais. Exemplos: `"250.00"`, `"250.5"`, `250.10` |
 
-**Exemplo**
+**Não existe campo de remetente.** O remetente é o usuário da sessão.
 
 ```bash
-curl -X POST http://localhost:8080/transaction \
+curl -b cookies.txt -X POST http://localhost:8080/transaction \
   -H "Content-Type: application/json" \
-  -d '{
-    "senderId": 1,
-    "receiverId": 2,
-    "amount": 100.00
-  }'
+  -d '{"receiverId": 2, "amount": "250.00"}'
 ```
 
 **Resposta `201 Created`**
 
-Resposta real obtida com os usuários do exemplo anterior. Neste caso o serviço de notificação estava indisponível, por isso os campos de notificação registram a falha:
+Os avisos saem depois do commit, então a resposta traz os dois em `PENDING`:
 
 ```json
 {
-  "id": 1,
-  "amount": 100.00,
-  "notifySender": "Falha ao enviar a notificação",
-  "notifyReceiver": "Falha ao enviar a notificação",
-  "sender": {
-    "id": 1,
-    "firstName": "Maria",
-    "lastName": "Souza",
-    "document": "00000000001",
-    "email": "maria@exemplo.com",
-    "password": "exemplo123",
-    "balance": 400.00,
-    "userType": "COMMON"
-  },
-  "receiver": {
-    "id": 2,
-    "firstName": "Loja",
-    "lastName": "Exemplo",
-    "document": "00000000000100",
-    "email": "loja@exemplo.com",
-    "password": "exemplo123",
-    "balance": 100.00,
-    "userType": "MERCHANT"
-  },
-  "timestamp": "2026-10-25T01:54:45.371088"
+  "id": 3,
+  "amount": "250.00",
+  "sender": { "id": 4, "name": "Maria Souza" },
+  "receiver": { "id": 2, "name": "Rafael Costa" },
+  "notifySender": "PENDING",
+  "notifyReceiver": "PENDING",
+  "timestamp": "2026-11-01T15:58:45.262679Z",
+  "direction": "SENT"
 }
 ```
 
-Quando a notificação é aceita, os campos `notifySender` e `notifyReceiver` trazem `Notificação enviada com sucesso`.
+O `timestamp` é sempre ISO-8601 em UTC. As pontas trazem só `id` e nome. O `direction` (`SENT` ou `RECEIVED`) é relativo a quem consulta.
 
 **Erros**
 
-Todos os erros de negócio retornam `500` no formato `ErrorResponseDTO`:
-
-| Situação | Status | `message` |
+| Situação | Status | `code` |
 | :--- | :---: | :--- |
-| Remetente inexistente | `500` | `Usuário remetente não encontrado` |
-| Destinatário inexistente | `500` | `Usuário destinatário não encontrado` |
-| Remetente é lojista | `500` | `Usuário do tipo lojista não está autorizado a realizar transferências` |
-| Saldo insuficiente | `500` | `Saldo insuficiente` |
-| Autorizador respondeu com erro HTTP | `500` | `Transferência recusada pelo serviço de autorização` |
-| Autorizador inacessível (falha de conexão) | `500` | mensagem técnica da exceção de rede |
-| `amount` ausente | `500` | `Cannot read field "scale" because "val" is null` |
-| `senderId` ausente | `500` | `id to load is required for loading` |
+| Sem sessão | `401` | `UNAUTHENTICATED` |
+| `receiverId` ou `amount` ausente; `amount` ≤ 0, com mais de 2 casas ou não numérico | `400` | `VALIDATION_ERROR` (`REQUIRED`, `INVALID_AMOUNT`) |
+| Remetente é lojista | `403` | `MERCHANT_CANNOT_SEND` |
+| Destinatário inexistente | `404` | `USER_NOT_FOUND` |
+| Transferência para si mesmo | `422` | `SELF_TRANSFER` |
+| Saldo insuficiente | `422` | `INSUFFICIENT_BALANCE` |
+| Autorizador recusou (`403` ou `authorization: false`) | `422` | `AUTHORIZATION_DENIED` |
+| Autorizador fora do ar (rede, *timeout*, `5xx`) | `503` | `AUTHORIZER_UNAVAILABLE` |
 
-> O autorizador público do desafio **recusa parte das requisições propositalmente** (responde `403`). É esperado que uma transferência válida às vezes seja negada. Basta repetir a requisição.
+```json
+{"statusCode":422,"code":"INSUFFICIENT_BALANCE","message":"Saldo insuficiente."}
+```
+
+---
+
+### `GET /transaction`
+
+Extrato de quem está logado: as transferências que enviou e as que recebeu, da mais recente para a mais antiga.
+
+| Parâmetro | Padrão | Valores |
+| :--- | :--- | :--- |
+| `direction` | `all` | `all`, `sent` ou `received` |
+| `page` | `0` | inteiro ≥ 0 |
+| `size` | `20` | de 1 a 50 |
+
+```bash
+curl -b cookies.txt "http://localhost:8080/transaction?direction=sent&page=0&size=20"
+```
+
+```json
+{
+  "items": [
+    {
+      "id": 3,
+      "amount": "250.00",
+      "sender": { "id": 4, "name": "Maria Souza" },
+      "receiver": { "id": 2, "name": "Rafael Costa" },
+      "notifySender": "SENT",
+      "notifyReceiver": "SENT",
+      "timestamp": "2026-11-01T15:58:45.262679Z",
+      "direction": "SENT"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "total": 1
+}
+```
+
+`total` é o número de itens em todas as páginas. Parâmetro fora do intervalo ou `direction` desconhecida respondem `400` · `VALIDATION_ERROR`.
 
 ---
 
@@ -583,22 +736,34 @@ Hello from Quarkus REST
 
 ### Formato padrão de erro
 
-As respostas produzidas pelos mapeadores de exceção seguem o contrato de `ErrorResponseDTO`:
-
 ```json
 {
-  "statusCode": 500,
-  "message": "Saldo insuficiente"
+  "statusCode": 422,
+  "code": "INSUFFICIENT_BALANCE",
+  "message": "Saldo insuficiente."
 }
 ```
 
-O campo `statusCode` repete o código HTTP da resposta.
+`fieldErrors` só aparece nos erros de validação (`400`), com um item `{"field", "code"}` por campo; nos demais erros o campo é omitido. O **`code` é o contrato**: é estável e é o que o cliente deve usar para decidir o que mostrar. A `message` é apenas legível e pode mudar.
+
+| Status | `code` |
+| :---: | :--- |
+| `400` | `VALIDATION_ERROR` |
+| `401` | `INVALID_CREDENTIALS`, `UNAUTHENTICATED` |
+| `403` | `MERCHANT_CANNOT_SEND` |
+| `404` | `USER_NOT_FOUND`, `NOT_FOUND` (rota inexistente) |
+| `405` | `METHOD_NOT_ALLOWED` |
+| `409` | `DUPLICATE_EMAIL`, `DUPLICATE_DOCUMENT` |
+| `422` | `INSUFFICIENT_BALANCE`, `SELF_TRANSFER`, `AUTHORIZATION_DENIED` |
+| `503` | `AUTHORIZER_UNAVAILABLE` |
+| `500` | `INTERNAL_ERROR` (mensagem genérica; o detalhe fica só no log) |
+| outros | `HTTP_<status>`, por exemplo `HTTP_415` |
 
 ---
 
 ## Persistência e modelo de dados
 
-A persistência usa **Hibernate ORM com Panache** no padrão *Active Record*: as entidades estendem `PanacheEntityBase` e expõem métodos como `persist()`, `findById()` e `listAll()`. O banco é o **H2 em memória**, e o esquema é recriado a cada inicialização.
+A persistência usa **Hibernate ORM com Panache** no padrão *Active Record*: as entidades estendem `PanacheEntityBase` e expõem métodos como `persist()`, `findById()` e `find()`. O banco é o **H2 em memória**, e o esquema é recriado a cada inicialização.
 
 ```mermaid
 erDiagram
@@ -611,7 +776,7 @@ erDiagram
         String lastName
         String document UK
         String email UK
-        String password
+        String passwordHash
         BigDecimal balance
         UserType userType
     }
@@ -619,11 +784,11 @@ erDiagram
     tb_transactions {
         Long id PK
         BigDecimal amount
-        String notifySender
-        String notifyReceiver
+        NotificationStatus notifySender
+        NotificationStatus notifyReceiver
         Long sender_id FK
         Long receiver_id FK
-        LocalDateTime timestamp
+        Instant timestamp
     }
 ```
 
@@ -632,17 +797,19 @@ erDiagram
 Representa uma conta com carteira.
 
 - `id`: chave primária gerada pelo banco (`GenerationType.IDENTITY`).
-- `document` e `email`: restrição `UNIQUE`.
-- `balance`: saldo da carteira (`BigDecimal`).
+- `document` e `email`: restrições únicas **nomeadas** (`uk_users_document`, `uk_users_email`), guardados já normalizados. O nome fixo permite traduzir a violação em `DUPLICATE_DOCUMENT` ou `DUPLICATE_EMAIL` sem depender do nome que o banco geraria.
+- `passwordHash`: hash BCrypt. A senha em si nunca é guardada.
+- `balance`: saldo da carteira, `BigDecimal` com precisão 19 e escala 2.
 - `userType`: enum `UserType` gravado como texto (`EnumType.STRING`).
 
 ### `Transaction` · tabela `tb_transactions`
 
 Registro de uma transferência concluída.
 
+- `amount`: `BigDecimal` com precisão 19 e escala 2.
 - `sender` e `receiver`: relacionamentos `@ManyToOne` com `User`, nas colunas `sender_id` e `receiver_id`. Um usuário pode participar de várias transações.
-- `notifySender` e `notifyReceiver`: texto com o resultado das notificações.
-- `timestamp`: data e hora de criação, preenchidas automaticamente por `@CreationTimestamp`.
+- `notifySender` e `notifyReceiver`: enum `NotificationStatus` (`PENDING`, `SENT`, `FAILED`), gravado como texto.
+- `timestamp`: momento da criação em **UTC** (`Instant`), preenchido por `@CreationTimestamp`.
 
 ---
 
@@ -658,14 +825,34 @@ Registro de uma transferência concluída.
 
 O `pom.xml` define `skipITs=true`, então `./mvnw verify` sozinho não executa os testes de integração. O perfil `native` habilita esses testes automaticamente.
 
-| Classe | Tipo | O que verifica |
-| :--- | :--- | :--- |
-| `GreetingResourceTest` | `@QuarkusTest` | `GET /hello` retorna `200` com `Hello from Quarkus REST` |
-| `GreetingResourceIT` | `@QuarkusIntegrationTest` | O mesmo teste, executado contra o artefato empacotado |
+Os testes **nunca** chamam o `util.devi.tools`: os dois clientes REST externos são substituídos por *mocks* (`@InjectMock @RestClient`).
 
-Os dois comandos acima foram executados com sucesso na validação desta documentação (1 teste em cada fase, sem falhas).
+| Classe | O que verifica |
+| :--- | :--- |
+| `ErrorModelTest` | Corpo de erro único: `404`/`405`/`415` em JSON, validação por campo, JSON malformado, `500` sem vazar detalhes |
+| `DocumentValidatorTest` · `DocumentMaskTest` | CPF e CNPJ por dígito verificador (inclusive sequências repetidas) e máscara de documento |
+| `UserServiceTest` | Cadastro: normalização, BCrypt, saldo inicial por tipo, duplicidade, constraints; login sem enumeração de contas |
+| `AuthApiTest` | Cadastro, login e logout; cookie `HttpOnly`/`SameSite`; cookie velho em rota pública; token de usuário inexistente; cadastros simultâneos; `Content-Type` obrigatório |
+| `TokenServiceTest` · `SessionCookieTest` · `EphemeralJwtKeysConfigSourceTest` · `MoneySerializerTest` | Token (emissor, `sub`, validade), flags do cookie, par de chaves efêmero, dinheiro como string com 2 casas |
+| `UserSearchApiTest` | Busca exata, sem prefixo, sem o próprio usuário, só dados públicos |
+| `TransferApiTest` | Regras da transferência, remetente sempre o logado, formatos de valor, autorizador recusando ou fora do ar, *rollback* e **concorrência** (duas transferências simultâneas não deixam a conta negativa) |
+| `NotificationApiTest` · `NotificationMessagesTest` | Avisos só depois do commit, em ordem, com e-mail e mensagem; retentativas; falha de aviso não desfaz a transferência |
+| `StatementApiTest` | Extrato: ordem, filtro, paginação, só as próprias transferências, nada sensível |
+| `SeedDataTest` · `OpenApiContractTest` | Contas de demonstração (idempotentes); rotas e dinheiro-como-string no contrato OpenAPI |
+| `GreetingResourceTest` · `GreetingResourceIT` | `GET /hello`, no teste e contra o artefato empacotado |
 
-**Escopo atual:** os testes cobrem apenas o endpoint `/hello`. Cadastro de usuários, transferências, regras de negócio e tratamento de erros **não possuem testes automatizados** até o momento.
+### Smoke test de ponta a ponta
+
+`scripts/smoke-api.mjs` percorre o fluxo inteiro contra o app empacotado e o [stub](#sem-acesso-ao-utildevitools-stub-local): login, saldo, busca, transferência, extrato, avisos recebidos pelo notificador, recusa e indisponibilidade do autorizador, lojista e logout. Imprime `✔` por verificação e `SMOKE OK`, e sai com código `1` na primeira falha. Pode rodar várias vezes na mesma instância.
+
+```bash
+node scripts/stub-externals.mjs &
+java -Dapp.seed.enabled=true -Dapp.jwt.cookie-secure=false \
+     -Dquarkus.rest-client.authorizer.url=http://localhost:9000 \
+     -Dquarkus.rest-client.notifier.url=http://localhost:9000 \
+     -jar target/quarkus-app/quarkus-run.jar &
+node scripts/smoke-api.mjs
+```
 
 ---
 
@@ -676,80 +863,86 @@ Desafio-picpay-quarkus/
 ├── .mvn/wrapper/                      configuração do Maven Wrapper
 ├── mvnw · mvnw.cmd                    Maven Wrapper (Linux/macOS · Windows)
 ├── pom.xml                            dependências, plugins e perfil native
+├── scripts/
+│   ├── stub-externals.mjs             stub do autorizador e do notificador
+│   └── smoke-api.mjs                  smoke test de ponta a ponta
+├── docs/superpowers/                  spec de design e planos de implementação
 └── src/
     ├── main/
     │   ├── java/dev/whallyson/
     │   │   ├── controllers/
-    │   │   │   ├── UserController.java            GET e POST /users
-    │   │   │   ├── TransactionController.java     POST /transaction
+    │   │   │   ├── AuthController.java            /auth/register, /auth/login, /auth/logout
+    │   │   │   ├── UserController.java            /users/me, /users/search
+    │   │   │   ├── TransactionController.java     POST e GET /transaction
     │   │   │   └── HelloController.java           GET /hello
     │   │   ├── services/
-    │   │   │   ├── UserService.java               cadastro, busca e validações
-    │   │   │   └── TransactionService.java        orquestração da transferência
+    │   │   │   ├── UserService.java               cadastro, login, busca
+    │   │   │   ├── TransactionService.java        transferência e extrato
+    │   │   │   ├── NotificationDispatcher.java    avisos depois do commit
+    │   │   │   ├── NotificationSender.java        envio com retentativas
+    │   │   │   ├── NotificationMessages.java      texto dos avisos
+    │   │   │   └── TransferCompleted.java         evento "transferência concluída"
     │   │   ├── entitys/
-    │   │   │   ├── user/User.java                 entidade tb_users
-    │   │   │   ├── user/UserType.java             enum COMMON | MERCHANT
-    │   │   │   └── transaction/Transaction.java   entidade tb_transactions
+    │   │   │   ├── user/User.java · UserType.java
+    │   │   │   └── transaction/Transaction.java · NotificationStatus.java
     │   │   ├── dtos/
-    │   │   │   ├── requests/                      RequestTransaction, RequestSendNotification
-    │   │   │   ├── responses/                     respostas dos serviços externos
-    │   │   │   └── exception/ErrorResponseDTO.java
+    │   │   │   ├── requests/                      RequestRegister, RequestLogin, RequestTransaction, RequestSendNotification
+    │   │   │   ├── responses/                     ResponseUser, ResponseUserSummary, ResponseTransaction, ResponsePage, serviços externos
+    │   │   │   ├── exception/ErrorResponseDTO.java
+    │   │   │   └── MoneySerializer.java           dinheiro como string com 2 casas
+    │   │   ├── exceptions/                        ErrorCode, ApiException
+    │   │   ├── validation/                        DocumentValidator, DocumentMask, @ValidDocument
     │   │   ├── mocks/
     │   │   │   ├── AuthorizationTransaction/      REST Client do autorizador
     │   │   │   └── SendNotification/              REST Client de notificação
     │   │   └── infra/
-    │   │       ├── GlobalExceptionHandler.java
-    │   │       └── DataIntegrityViolationExceptionMapper.java
+    │   │       ├── security/                      TokenService, SessionCookie, CurrentUser, EphemeralJwtKeysConfigSource
+    │   │       ├── ApiExceptionMapper · ConstraintViolationMapper · JsonErrorMapper · MismatchedInputMapper
+    │   │       ├── SecurityExceptionMappers.java · GlobalExceptionHandler.java · ErrorResponses.java
+    │   │       └── SeedData.java                  contas de demonstração
     │   └── resources/
-    │       └── application.properties         datasource e Hibernate
-    └── test/java/dev/whallyson/
-        ├── GreetingResourceTest.java
-        └── GreetingResourceIT.java
+    │       ├── application.properties             datasource, Hibernate, sessão, serviços externos
+    │       └── META-INF/services/                 fonte de configuração das chaves efêmeras
+    └── test/java/dev/whallyson/                   testes (veja a seção Testes) e utilitários em support/
 ```
 
 ---
 
 ## Limitações conhecidas
 
-### Confirmadas
-
-Observadas na leitura do código e reproduzidas com a aplicação em execução:
-
-- **Status HTTP genéricos.** Erros de negócio retornam `500`, porque são lançados como `Exception` e capturados pelo `GlobalExceptionHandler`.
-- **Erros do próprio framework também viram `500`.** O mapeador de `Exception` captura exceções HTTP do JAX-RS: uma rota inexistente retorna `500` com `HTTP 404 Not Found`, e um método não suportado retorna `500` com `HTTP 405 Method Not Allowed`.
-- **Senha exposta.** O campo `password` é gravado em texto puro e aparece nas respostas de `/users` e `/transaction`.
-- **Sem validação de entrada.** É possível cadastrar um usuário com todos os campos nulos (`POST /users` com `{}` retorna `201`).
-- **Transferência para si mesmo.** Uma transferência com `senderId` igual a `receiverId` é aceita e registrada.
-- **Mensagem de duplicidade genérica.** O mapeador procura os nomes de restrição `tb_users_document_key` e `tb_users_email_key`, que não correspondem aos nomes gerados pelo H2. Por isso a resposta é sempre `Violação de chave única no banco de dados.`, sem indicar qual campo está duplicado.
-- **Autorização avaliada só pelo código HTTP.** O campo `data.authorization` da resposta do autorizador não é verificado.
-- **Notificação antes do commit.** As notificações são enviadas dentro da transação, antes da persistência, e com corpo vazio (`email` e `mensagem` nulos).
-- **Swagger UI ausente fora do modo dev.** No JAR empacotado, `/q/swagger-ui` não existe e, pelo mapeador global, responde `500`.
 - **Dados voláteis.** O H2 em memória com `drop-and-create` descarta todos os dados ao reiniciar.
-
-### Identificadas no código, não reproduzidas
-
-- **Valores negativos ou zero.** Não há verificação de `amount > 0`. Pela lógica de `validadeTransaction`, um valor negativo passaria pela validação de saldo e, se autorizado, inverteria o sentido da transferência.
-- **Falha de rede na notificação.** Apenas `ClientWebApplicationException` (resposta HTTP de erro) é tratada. Uma falha de conexão com o serviço de notificação provavelmente se propagaria e desfaria a transferência inteira.
-- **Concorrência.** Não há controle de concorrência (`@Version` ou *lock*) sobre o saldo. Transferências simultâneas do mesmo remetente podem resultar em saldo inconsistente.
+- **Sessões e chaves efêmeras.** Sem as variáveis `SMALLRYE_JWT_SIGN_KEY` e `MP_JWT_VERIFY_PUBLICKEY`, cada reinício gera um par novo e derruba as sessões.
+- **Sem limite de tentativas de login.** Não há *rate limiting*: um cliente pode tentar senhas à vontade.
+- **Sem renovação de sessão.** A sessão dura 1 hora e depois exige novo login.
+- **Sem idempotência em `POST /transaction`.** Reenviar a mesma requisição cria uma segunda transferência. O cliente deve impedir o envio duplo (por exemplo, desabilitando o botão durante a requisição).
+- **Aviso pode ficar `PENDING`.** Os avisos saem em memória, depois do commit. Se o processo cair entre o commit e o envio, o aviso fica `PENDING` para sempre: não há reprocessamento.
+- **CPF e CNPJ só por dígito verificador.** Não há consulta à Receita Federal.
+- **Log de duplicidade.** O Hibernate registra em `ERROR` cada violação de unicidade, mesmo ela virando `409`; em produção isso gera ruído no log.
+- **Swagger UI ausente fora do modo dev.** No JAR empacotado, `/q/swagger-ui` não existe; a especificação continua em `/q/openapi`.
+- **Autorizador público intermitente.** O `util.devi.tools` recusa parte das requisições de propósito; transferências válidas às vezes voltam como `AUTHORIZATION_DENIED`.
 
 ---
 
 ## Roadmap
 
-Propostas de evolução. **Nenhum destes itens está implementado.**
+Os itens marcados já foram entregues; os demais seguem como propostas.
 
-- [ ] Exceções de domínio com status semânticos (`404`, `422`, `403`) e mapeador que preserve as exceções HTTP do JAX-RS.
-- [ ] DTOs de entrada e saída para usuário e transação, sem expor a senha.
-- [ ] Hash de senha (por exemplo, BCrypt).
-- [ ] Bean Validation (`@NotNull`, `@Positive`, `@Email`) e validação de CPF/CNPJ.
-- [ ] Bloqueio de transferência para si mesmo e de valores menores ou iguais a zero.
-- [ ] Verificação do campo `data.authorization` na resposta do autorizador.
-- [ ] Controle de concorrência sobre o saldo.
-- [ ] Envio de notificação após o commit, com o conteúdo da mensagem, *timeout* e *retry*.
-- [ ] URLs dos serviços externos definidas em `application.properties`.
-- [ ] Testes unitários e de integração para as regras de negócio.
+- [x] Exceções de domínio com status semânticos (`404`, `422`, `403`) e mapeador que preserve as exceções HTTP do JAX-RS.
+- [x] DTOs de entrada e saída para usuário e transação, sem expor a senha.
+- [x] Hash de senha (BCrypt) e login com sessão por JWT em cookie.
+- [x] Bean Validation (`@NotBlank`, `@Email`, `@DecimalMin`) e validação de CPF/CNPJ.
+- [x] Bloqueio de transferência para si mesmo e de valores menores ou iguais a zero.
+- [x] Verificação do campo `data.authorization` na resposta do autorizador.
+- [x] Controle de concorrência sobre o saldo.
+- [x] Envio de notificação após o commit, com o conteúdo da mensagem, *timeout* e *retry*.
+- [x] URLs dos serviços externos definidas em `application.properties`.
+- [x] Testes unitários e de integração para as regras de negócio.
+- [x] Endpoints de consulta de transações.
 - [ ] Banco persistente (por exemplo, PostgreSQL) com migrações versionadas.
-- [ ] Endpoints de consulta de transações.
+- [ ] Chave de idempotência em `POST /transaction`.
+- [ ] Limite de tentativas de login (*rate limiting*).
+- [ ] Renovação de sessão (*refresh token*).
+- [ ] Reprocessamento dos avisos que ficaram `PENDING` (padrão *outbox*).
 
 ---
 
@@ -773,18 +966,4 @@ O repositório não define uma licença até o momento. Na ausência de licença
 
 - Projeto inspirado no desafio técnico de back-end do **PicPay**.
 - Serviços de autorização e notificação simulados disponibilizados em `util.devi.tools`.
-- Construído com [Quarkus](https://quarkus.io/). Guias usados como referência: [REST](https://quarkus.io/guides/rest), [REST Client](https://quarkus.io/guides/rest-client), [Hibernate ORM com Panache](https://quarkus.io/guides/hibernate-orm-panache) e [OpenAPI e Swagger UI](https://quarkus.io/guides/openapi-swaggerui).
-
----
-
-<div align="center">
-
-<br>
-
-Desenvolvido por **Whallyson Gabriel Garcia da Silva**
-
-<sub>Java · Quarkus · Back-end</sub>
-
-<br>
-
-</div>
+- Construído com [Quarkus](https://quarkus.io/). Guias usados como referência: [REST](https://quarkus.io/guides/rest), [REST Client](https://quarkus.io/guides/rest-client), [Hibernate ORM com Panache](https://quarkus.io/guides/hibernate-orm-panache), [SmallRye JWT](https://quarkus.io/guides/security-jwt) e [OpenAPI e Swagger UI](https://quarkus.io/guides/openapi-swaggerui).
