@@ -103,10 +103,16 @@ public class TransactionService {
                     List.of(new ErrorResponseDTO.FieldError("direction", "INVALID_DIRECTION")));
         };
         PanacheQuery<Transaction> query = Transaction.find(filter, Sort.descending("id"), userId);
+        long total = query.count();
+        // Página além do fim é uma página vazia. A checagem usa long antes de paginar: o Panache calcula
+        // page * size em int, e um page enorme estouraria para negativo (e viraria 500).
+        if ((long) page * size >= total) {
+            return new ResponsePage<>(List.of(), page, size, total);
+        }
         List<ResponseTransaction> items = query.page(Page.of(page, size)).list().stream()
                 .map(transaction -> ResponseTransaction.from(transaction, userId))
                 .toList();
-        return new ResponsePage<>(items, page, size, query.count());
+        return new ResponsePage<>(items, page, size, total);
     }
 
     // Autorizador externo (mock). Falha FECHADA: só uma resposta que afirma data.authorization == true libera.

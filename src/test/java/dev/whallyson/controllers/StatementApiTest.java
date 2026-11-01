@@ -90,6 +90,16 @@ class StatementApiTest {
         }
     }
 
+    // Página além do fim (inclusive um número enorme, em que página x tamanho estoura int) é uma página vazia
+    // com o total correto, nunca 500. Quebra se: o deslocamento voltar a ser calculado em int.
+    @Test
+    void pageBeyondTheEnd_isAnEmptyPage_not500() {
+        for (String page : List.of("5", "2147483647")) {
+            get(a, "size=50&page=" + page).then().statusCode(200)
+                    .body("items.size()", is(0)).body("total", is(3)).body("page", is(Integer.parseInt(page)));
+        }
+    }
+
     @Test
     void unauthenticated_is401() {
         given().get("/transaction").then().statusCode(401);

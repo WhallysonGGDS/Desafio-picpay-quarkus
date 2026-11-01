@@ -414,7 +414,7 @@ A configuração está em `src/main/resources/application.properties`. Qualquer 
 | `quarkus.hibernate-orm.dialect` | `org.hibernate.dialect.H2Dialect` | Dialeto SQL |
 | `quarkus.hibernate-orm.log.sql` · `log.bind-parameters` | `false` | Log das instruções SQL e dos parâmetros |
 | `app.signup.initial-balance` | `1000.00` | Saldo inicial de todo usuário comum (lojista começa com `0.00`) |
-| `app.seed.enabled` | `false` (`true` em `%dev`) | Cria as contas de demonstração na inicialização |
+| `app.seed.enabled` | `false` (`true` em `%dev`) | Cria as contas de demonstração na inicialização. Elas têm senha pública (`demo1234`): **nunca ligue em produção** |
 | `app.jwt.lifetime` | `PT1H` | Validade da sessão |
 | `app.jwt.cookie-secure` | `true` (`false` em `%dev` e `%test`) | Marca o cookie de sessão como `Secure` |
 | `mp.jwt.token.cookie` | `arco_session` | Nome do cookie que carrega o JWT |
@@ -913,6 +913,8 @@ Desafio-picpay-quarkus/
 - **Dados voláteis.** O H2 em memória com `drop-and-create` descarta todos os dados ao reiniciar.
 - **Sessões e chaves efêmeras.** Sem as variáveis `SMALLRYE_JWT_SIGN_KEY` e `MP_JWT_VERIFY_PUBLICKEY`, cada reinício gera um par novo e derruba as sessões.
 - **Sem limite de tentativas de login.** Não há *rate limiting*: um cliente pode tentar senhas à vontade.
+- **A busca de destinatário revela se uma conta existe.** Qualquer usuário logado pode testar e-mails e documentos, sem limite de consultas, e descobrir se há conta e qual o nome. Isso é inerente a "enviar para alguém pelo e-mail ou CPF", mas, sem *rate limiting*, permite varredura.
+- **Logout não revoga o token.** Sair expira o cookie no navegador, mas o JWT já emitido continua válido até vencer (1 hora): a sessão é sem estado e não há lista de revogação.
 - **Sem renovação de sessão.** A sessão dura 1 hora e depois exige novo login.
 - **Sem idempotência em `POST /transaction`.** Reenviar a mesma requisição cria uma segunda transferência. O cliente deve impedir o envio duplo (por exemplo, desabilitando o botão durante a requisição).
 - **Aviso pode ficar `PENDING`.** Os avisos saem em memória, depois do commit. Se o processo cair entre o commit e o envio, o aviso fica `PENDING` para sempre: não há reprocessamento.
@@ -940,8 +942,8 @@ Os itens marcados já foram entregues; os demais seguem como propostas.
 - [x] Endpoints de consulta de transações.
 - [ ] Banco persistente (por exemplo, PostgreSQL) com migrações versionadas.
 - [ ] Chave de idempotência em `POST /transaction`.
-- [ ] Limite de tentativas de login (*rate limiting*).
-- [ ] Renovação de sessão (*refresh token*).
+- [ ] Limite de tentativas (*rate limiting*) no login e na busca de destinatário.
+- [ ] Renovação de sessão (*refresh token*) e revogação do token no logout.
 - [ ] Reprocessamento dos avisos que ficaram `PENDING` (padrão *outbox*).
 
 ---

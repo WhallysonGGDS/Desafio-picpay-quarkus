@@ -140,6 +140,14 @@ class TransferApiTest {
         transfer(a, b.id(), "999999999999999.99").then().statusCode(422).body("code", is("INSUFFICIENT_BALANCE"));
     }
 
+    // Quebra se: o Jackson voltar a truncar fração em campo inteiro — "receiverId": 2.9 pagaria ao usuário 2 em silêncio.
+    @Test
+    void fractionalReceiverId_isRejected_notTruncatedToAnotherUser() {
+        long before = txCount();
+        transfer(a, b.id() + 0.9, "1.00").then().statusCode(400).body("code", is("VALIDATION_ERROR"));
+        assertUntouched(before);
+    }
+
     @Test
     void unknownReceiver_is404() {
         long before = txCount();
