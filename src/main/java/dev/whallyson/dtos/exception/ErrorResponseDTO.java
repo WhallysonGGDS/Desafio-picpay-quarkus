@@ -1,28 +1,12 @@
 package dev.whallyson.dtos.exception;
 
-public class ErrorResponseDTO {
+import com.fasterxml.jackson.annotation.JsonInclude;
 
-    private int statusCode;
-    private String message;
+import java.util.List;
 
-    public ErrorResponseDTO(int statusCode, String message) {
-        this.statusCode = statusCode;
-        this.message = message;
-    }
+// Corpo único de erro da API: { statusCode, code, message, fieldErrors? }.
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
+public record ErrorResponseDTO(int statusCode, String code, String message, List<FieldError> fieldErrors) {
 
-    public int getStatusCode() {
-        return statusCode;
-    }
-
-    public void setStatusCode(int statusCode) {
-        this.statusCode = statusCode;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
-        this.message = message;
-    }
+    public record FieldError(String field, String code) {}
 }
