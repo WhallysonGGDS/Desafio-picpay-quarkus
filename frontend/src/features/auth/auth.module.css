@@ -1,0 +1,108 @@
+.title {
+  margin-bottom: var(--sp-7);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.form {
+  display: grid;
+  gap: var(--sp-6);
+}
+
+.pair {
+  display: grid;
+  gap: var(--sp-6);
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.alert {
+  font-size: var(--fs-small);
+  color: var(--danger);
+}
+
+.actions {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+}
+
+.note {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.switch {
+  margin-top: var(--sp-7);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+/* O link discreto tem um respiro interno de 4 px: recua para o texto alinhar com os campos. */
+.switch > a {
+  margin-left: calc(var(--sp-1) * -1);
+}
+
+/* Pessoa ou Loja: radios de verdade (teclado e leitor de tela), só que sem a bolinha: o escolhido fica claro e
+   sublinhado. */
+.kind {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.options {
+  display: flex;
+  gap: var(--sp-6);
+}
+
+.option {
+  position: relative;
+  display: inline-flex;
+  padding: var(--sp-2) 0;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.option input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.optionText {
+  position: relative;
+}
+
+.option input:checked + .optionText {
+  color: var(--text);
+}
+
+.option input:checked + .optionText::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -5px;
+  height: 1px;
+  background: var(--text);
+}
+
+.option input:focus-visible + .optionText {
+  outline: 2px solid var(--accent);
+  outline-offset: 6px;
+}

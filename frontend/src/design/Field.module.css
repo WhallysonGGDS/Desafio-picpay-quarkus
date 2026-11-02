@@ -1,5 +1,6 @@
 .field {
   display: grid;
+  align-content: start; /* numa linha com outro campo, as linhas não esticam: a base dos dois fica alinhada */
   gap: var(--sp-2);
   min-width: 0;
 }
@@ -31,6 +32,12 @@
 
 .input::placeholder {
   color: var(--text-3);
+}
+
+/* O indicador de foco do campo é a linha de acento abaixo (.rule). Mais específico que o :focus-visible global,
+   para valer qualquer que seja a ordem em que os CSS são carregados. */
+.input:focus-visible {
+  outline: none;
 }
 
 /* Foco: a linha de acento cresce da esquerda. É o indicador de foco do campo (o outline global fica de fora). */
