@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { page, marina, rafael, summary, tx } from '../test/fixtures';
+import { errorResponse as backendError } from '../test/api';
 import { server } from '../test/server';
 import { ApiError } from './ApiError';
 import { createApi } from './client';
@@ -17,10 +18,6 @@ const registration: RegisterBody = {
   password: 'demo1234',
   userType: 'COMMON',
 };
-
-function backendError(status: number, code: string, fieldErrors?: { field: string; code: string }[]) {
-  return HttpResponse.json({ statusCode: status, code, message: 'texto do servidor', ...(fieldErrors ? { fieldErrors } : {}) }, { status });
-}
 
 describe('me()', () => {
   it('devolve o usuário no 200, com o dinheiro ainda como string', async () => {

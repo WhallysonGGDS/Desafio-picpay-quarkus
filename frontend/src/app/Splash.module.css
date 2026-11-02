@@ -1,0 +1,18 @@
+.splash {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+}
+
+.mark {
+  animation: reveal var(--dur-3) var(--ease-out) 200ms both;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

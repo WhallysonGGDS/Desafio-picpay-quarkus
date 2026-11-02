@@ -2,12 +2,16 @@ import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RouterProvider } from 'react-router-dom';
+import { Providers } from './app/providers';
+import { createAppRouter } from './app/router';
 import './design/tokens.css';
 import './design/global.css';
 
-// Provisório: as telas entram nas tarefas seguintes.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <h1>arco</h1>
+    <Providers>
+      <RouterProvider router={createAppRouter()} />
+    </Providers>
   </StrictMode>,
 );
