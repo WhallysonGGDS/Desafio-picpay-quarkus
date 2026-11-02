@@ -1,0 +1,40 @@
+/* Em tela larga o saldo ocupa as colunas 1 a 7 e as movimentações as colunas 9 a 12, com uma coluna de respiro
+   entre eles. No celular, empilha: primeiro o saldo. */
+.wallet {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-8);
+  max-width: 80rem;
+}
+
+.label {
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.actions {
+  margin-top: var(--sp-7);
+}
+
+.movements {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+@media (min-width: 64rem) {
+  .wallet {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--sp-5);
+  }
+
+  .balance {
+    grid-column: 1 / span 7;
+  }
+
+  .movements {
+    grid-column: 9 / span 4;
+  }
+}

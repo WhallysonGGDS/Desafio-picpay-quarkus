@@ -1,0 +1,9 @@
+.note {
+  color: var(--text-2);
+}
+
+/* O link discreto tem um respiro interno de 4 px: recua para o texto alinhar com as linhas. */
+.statement {
+  justify-self: start;
+  margin-left: calc(var(--sp-1) * -1);
+}
