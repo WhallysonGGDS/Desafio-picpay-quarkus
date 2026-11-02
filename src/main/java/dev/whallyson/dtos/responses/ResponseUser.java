@@ -10,6 +10,7 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import java.math.BigDecimal;
 
 // Perfil do próprio usuário. Não existe campo de senha nem de hash: a entidade nunca sai pela API.
+@Schema(requiredProperties = {"id", "firstName", "lastName", "document", "email", "balance", "userType"})
 public record ResponseUser(
         Long id,
         String firstName,

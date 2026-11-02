@@ -12,6 +12,7 @@ import java.time.Instant;
 
 // Uma transferência como quem consulta a enxerga: as duas pontas só com id e nome (nunca e-mail, documento
 // ou saldo), a situação dos avisos e a direção (SENT/RECEIVED) relativa a quem consulta.
+@Schema(requiredProperties = {"id", "amount", "sender", "receiver", "notifySender", "notifyReceiver", "timestamp", "direction"})
 public record ResponseTransaction(
         Long id,
         @JsonSerialize(using = MoneySerializer.class) @Schema(type = SchemaType.STRING, example = "250.00") BigDecimal amount,
@@ -22,6 +23,7 @@ public record ResponseTransaction(
         Instant timestamp,
         Direction direction) {
 
+    @Schema(requiredProperties = {"id", "name"})
     public record Party(Long id, String name) {}
 
     public enum Direction { SENT, RECEIVED }
