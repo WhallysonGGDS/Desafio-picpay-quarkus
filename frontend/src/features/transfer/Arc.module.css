@@ -1,0 +1,186 @@
+.arc {
+  display: grid;
+  gap: var(--sp-2);
+  width: 100%;
+  max-width: 28rem;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.track,
+.light {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.track {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+/* O traço de luz mede 1 (pathLength): dasharray e dashoffset são proporções do arco. O padrão é "traço 1, lacuna 2":
+   a lacuna é maior que o arco, então, recolhido (dashoffset 1), nenhum traço, nem de comprimento zero, cai na ponta
+   (com stroke-linecap redondo, alguns navegadores desenham um ponto ali). */
+.light {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 1 2;
+  stroke-dashoffset: 1;
+}
+
+.origin {
+  fill: var(--text);
+}
+
+.target {
+  fill: var(--bg);
+  stroke: var(--text-3);
+  stroke-width: 1;
+}
+
+/* A chegada: um ponto de acento que acende (opacidade) e um anel que se expande e some (transform e opacidade). */
+.arrived {
+  fill: var(--accent);
+  opacity: 0;
+}
+
+.pulse {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.names {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.name {
+  max-width: 48%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Autorizando: um segmento de luz percorre o arco, do começo ao fim, em laço. */
+[data-arc-state='authorizing'] .light {
+  stroke-dasharray: 0.16 2;
+  stroke-dashoffset: 0.16;
+  animation: travel 1.5s var(--ease-in-out) infinite;
+}
+
+@keyframes travel {
+  from {
+    stroke-dashoffset: 0.16;
+  }
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
+/* Pousou: o arco se desenha inteiro (640 ms) e, quando chega, o ponto de chegada acende e pulsa. As duas animações
+   com atraso usam `forwards`, nunca `both`: com `both` o primeiro quadro (anel a 90%) valeria já durante a espera e
+   o destino acenderia antes de o arco chegar. */
+[data-arc-state='landed'] .light {
+  stroke-dashoffset: 0;
+  animation: draw var(--dur-3) var(--ease-out) both;
+}
+
+[data-arc-state='landed'] .arrived {
+  animation: arrive 240ms var(--ease-out) var(--dur-3) forwards;
+}
+
+[data-arc-state='landed'] .pulse {
+  animation: pulse 900ms var(--ease-out) var(--dur-3) forwards;
+}
+
+[data-arc-state='landed'] .destination {
+  color: var(--text);
+}
+
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(3.4);
+  }
+}
+
+/* Não enviou: o traço se recolhe em 480 ms, do destino de volta à origem. É vermelho funcional: um arco inteiro em
+   acento é a cara de "enviado" e não pode aparecer, nem por um instante, numa recusa. */
+[data-arc-state='retracted'] .light {
+  stroke: var(--danger);
+  stroke-dashoffset: 1;
+  animation: retract 480ms var(--ease-in-out) both;
+}
+
+@keyframes retract {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 1;
+  }
+}
+
+/* Movimento reduzido: nada anima. O estado aparece só pela forma e pela cor: autorizando é um pontilhado de acento,
+   pousou é o arco inteiro com o ponto de chegada aceso, e não enviou deixa o caminho em vermelho funcional. */
+@media (prefers-reduced-motion: reduce) {
+  [data-arc-state] .light,
+  [data-arc-state] .arrived,
+  [data-arc-state] .pulse {
+    animation: none;
+  }
+
+  [data-arc-state='authorizing'] .light {
+    stroke-dasharray: 0.001 0.035;
+    stroke-dashoffset: 0;
+    stroke-width: 2.5;
+  }
+
+  [data-arc-state='landed'] .light {
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 0;
+  }
+
+  [data-arc-state='landed'] .arrived {
+    opacity: 1;
+  }
+
+  [data-arc-state='retracted'] .track {
+    stroke: var(--danger);
+  }
+}
