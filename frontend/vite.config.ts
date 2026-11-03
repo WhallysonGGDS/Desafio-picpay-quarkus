@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 // Em desenvolvimento o Vite serve o front e repassa a API ao Quarkus. Empacotado, o Quinoa serve o `dist/` na mesma origem.
 const API = 'http://localhost:8080';
@@ -14,5 +14,7 @@ export default defineConfig({
     environment: 'jsdom',
     globalSetup: ['./src/test/global-setup.ts'],
     setupFiles: ['./src/test/setup.ts'],
+    // e2e/*.spec.ts são do Playwright (rodam com `npm run e2e`, contra o jar); o Vitest só roda o que é teste unitário.
+    exclude: [...configDefaults.exclude, 'e2e/**/*.spec.ts'],
   },
 });
