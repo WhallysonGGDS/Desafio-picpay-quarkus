@@ -353,6 +353,28 @@ test('sem erros de console nem exceções durante a jornada completa', async ({ 
   expect(errors()).toEqual([]);
 });
 
+// WCAG 2.4.2: cada tela tem o seu título. É o que a aba e o histórico mostram, e o que o leitor de tela lê quando um app de uma
+// página só troca de tela.
+test('cada tela tem o seu título', async ({ page }) => {
+  const expected: Record<string, string> = {
+    '/': 'Arco',
+    '/entrar': 'Entrar na carteira | Arco',
+    '/criar-conta': 'Criar minha carteira | Arco',
+    '/carteira': 'Carteira | Arco',
+    '/transferir': 'Transferir | Arco',
+    '/extrato': 'Extrato | Arco',
+  };
+  for (const route of PUBLIC) {
+    await page.goto(route);
+    await expect(page, route).toHaveTitle(expected[route] as string);
+  }
+  await signIn(page, DEMO.marina);
+  for (const route of PRIVATE) {
+    await page.goto(route);
+    await expect(page, route).toHaveTitle(expected[route] as string);
+  }
+});
+
 // A aba do navegador mostra a marca (e não o ícone genérico de página), e a página se descreve ao ser compartilhada.
 test('a aba tem o ícone da marca e a página tem descrição', async ({ page, request }) => {
   await page.goto('/entrar');

@@ -192,3 +192,35 @@ describe('AppShell', () => {
     await waitFor(() => expect(currentUrl(router)).toBe('/entrar?next=%2Fcarteira'));
   });
 });
+
+// O título da aba e do histórico diz onde a pessoa está (e é o que o leitor de tela lê ao trocar de tela num app de uma página só).
+describe('título da página (WCAG 2.4.2)', () => {
+  // Quebra se: todas as telas ficarem com o mesmo título: abas e histórico iguais, e quem usa leitor de tela sem aviso de que a
+  // tela mudou.
+  it.each([
+    ['/entrar', 'Entrar na carteira | Arco', null],
+    ['/criar-conta', 'Criar minha carteira | Arco', null],
+    ['/carteira', 'Carteira | Arco', marina],
+    ['/transferir', 'Transferir | Arco', marina],
+    ['/extrato', 'Extrato | Arco', marina],
+    ['/nao-existe', 'Página não encontrada | Arco', null],
+    ['/', 'Arco', null],
+  ])('%s tem o título "%s"', async (route, title, user) => {
+    document.title = 'um título qualquer';
+    renderApp(route, { user });
+
+    await waitFor(() => expect(document.title).toBe(title));
+  });
+
+  // Quebra se: o título de uma tela ficar para a próxima (a vitrine, sem hook, herdaria "Carteira | Arco").
+  it('trocar de tela troca o título, inclusive de volta para a vitrine', async () => {
+    const { router } = renderApp('/carteira', { user: marina });
+    await waitFor(() => expect(document.title).toBe('Carteira | Arco'));
+
+    await userEvent.setup().click(await screen.findByRole('link', { name: 'Extrato' }));
+    await waitFor(() => expect(document.title).toBe('Extrato | Arco'));
+
+    await router.navigate('/');
+    await waitFor(() => expect(document.title).toBe('Arco'));
+  });
+});

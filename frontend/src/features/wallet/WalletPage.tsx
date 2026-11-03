@@ -1,4 +1,5 @@
 import { useSession } from '../../app/session';
+import { useDocumentTitle } from '../../app/useDocumentTitle';
 import { ButtonLink } from '../../design/Button';
 import { ROUTES } from '../../routes';
 import { EmptyMovements, LoadFailure, MovementsSkeleton } from '../statement/ListStates';
@@ -9,6 +10,7 @@ import styles from './WalletPage.module.css';
 // O saldo é o dado principal: vem da sessão e aparece de imediato. As movimentações chegam depois, e a falha delas
 // (rede ou servidor) não derruba a carteira: o saldo continua na tela, com o motivo e a chance de tentar de novo.
 export function WalletPage() {
+  useDocumentTitle('Carteira');
   const { user } = useSession();
   const statement = useStatement('all', 5);
   if (!user) return null;

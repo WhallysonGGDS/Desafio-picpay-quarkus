@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { messageFor } from '../../api/errorMessages';
 import { Button, ButtonLink } from '../../design/Button';
 import { Field } from '../../design/Field';
+import { useDocumentTitle } from '../../app/useDocumentTitle';
 import { useLogin } from '../../app/session';
 import { ROUTES } from '../../routes';
 import styles from './auth.module.css';
@@ -11,6 +12,7 @@ import { messagesOf, validateLogin, type LoginField } from './validation';
 // Depois de entrar, quem leva a pessoa ao destino (?next=, só se for interno) é a guarda RedirectIfSignedIn:
 // a sessão gravada pelo login a dispara.
 export function LoginPage() {
+  useDocumentTitle('Entrar na carteira');
   const [params] = useSearchParams();
   const login = useLogin();
   const [email, setEmail] = useState('');

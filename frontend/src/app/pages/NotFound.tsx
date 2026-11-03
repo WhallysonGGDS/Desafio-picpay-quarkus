@@ -2,9 +2,11 @@ import { Link } from 'react-router-dom';
 import { ButtonLink } from '../../design/Button';
 import { Wordmark } from '../../design/Wordmark';
 import { ROUTES } from '../../routes';
+import { useDocumentTitle } from '../useDocumentTitle';
 import styles from './NotFound.module.css';
 
 export function NotFound() {
+  useDocumentTitle('Página não encontrada');
   return (
     <main className={styles.page}>
       <Link to={ROUTES.home} aria-label="arco, ir para o início" className={styles.brand}>

@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { messageFor } from '../../api/errorMessages';
 import { useRegister } from '../../app/session';
+import { useDocumentTitle } from '../../app/useDocumentTitle';
 import { Button, ButtonLink } from '../../design/Button';
 import { Field } from '../../design/Field';
 import { digitsOnly, maskDocumentInput, type DocumentKind } from '../../lib/document';
@@ -31,6 +32,7 @@ const EMPTY: RegisterForm = { userType: 'COMMON', firstName: '', lastName: '', e
 // Depois de criar a conta (que já inicia a sessão), quem leva a pessoa ao destino é a guarda RedirectIfSignedIn:
 // ao ?next= se for interno, ou à carteira.
 export function RegisterPage() {
+  useDocumentTitle('Criar minha carteira');
   const [params] = useSearchParams();
   const register = useRegister();
   const [form, setForm] = useState<RegisterForm>(EMPTY);

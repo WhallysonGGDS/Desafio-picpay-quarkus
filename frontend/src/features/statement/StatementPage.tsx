@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import { messageFor } from '../../api/errorMessages';
+import { useDocumentTitle } from '../../app/useDocumentTitle';
 import { Button } from '../../design/Button';
 import { EmptyMovements, LoadFailure, MovementsSkeleton } from './ListStates';
 import { MovementList, MovementRow } from './MovementRow';
@@ -13,6 +14,7 @@ const TABS: { direction: StatementDirection; label: string }[] = [
 ];
 
 export function StatementPage() {
+  useDocumentTitle('Extrato');
   const [direction, setDirection] = useState<StatementDirection>('all');
   const statement = useStatement(direction);
   const tabs = useRef<Partial<Record<StatementDirection, HTMLButtonElement | null>>>({});
