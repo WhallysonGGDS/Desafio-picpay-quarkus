@@ -1,6 +1,7 @@
-import { QueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import type { User } from '../api/types';
+import { createQueryClient } from '../app/providers';
 import { server } from './server';
 
 /** Resposta de erro no formato do back-end: { statusCode, code, message, fieldErrors? }. */
@@ -11,9 +12,9 @@ export function errorResponse(status: number, code: string, fieldErrors?: { fiel
   );
 }
 
-/** Um QueryClient para teste: nada repete sozinho, para o teste ver exatamente quantas chamadas aconteceram. */
+/** O QueryClient do app para teste: nada repete sozinho, para o teste ver exatamente quantas chamadas aconteceram. */
 export function testQueryClient(): QueryClient {
-  return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return createQueryClient({ queries: { retry: false }, mutations: { retry: false } });
 }
 
 /** Registra o GET /users/me: o usuário dado, ou 401 (deslogado) se for null. */

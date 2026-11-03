@@ -79,6 +79,13 @@ async function bodyOf<D>(call: Promise<Outcome<D>>): Promise<D> {
   return data;
 }
 
+/**
+ * Prazo do envio. Sem resposta nele a chamada falha como NETWORK, e a tela diz "não deu para confirmar" (o envio pode ter
+ * chegado: o extrato mostra). O back-end responde bem antes (o autorizador tem 3 s e a trava de saldo, 10 s), mas uma
+ * conexão pendurada deixaria a tela em "Autorizando…" para sempre, e o fluxo fica travado enquanto há um envio a caminho.
+ */
+export const TRANSFER_TIMEOUT_MS = 20_000;
+
 export function createApi(baseUrl: string = window.location.origin): Api {
   const client = createClient<paths>({
     baseUrl,
@@ -111,7 +118,13 @@ export function createApi(baseUrl: string = window.location.origin): Api {
       return bodyOf(client.GET('/users/search', { params: { query: { q } } }));
     },
     async transfer(body) {
-      return bodyOf(client.POST('/transaction', { body }));
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TRANSFER_TIMEOUT_MS);
+      try {
+        return await bodyOf(client.POST('/transaction', { body, signal: controller.signal }));
+      } finally {
+        clearTimeout(timer);
+      }
     },
     async statement({ direction, page, size }) {
       return bodyOf(client.GET('/transaction', { params: { query: { direction, page, size } } }));

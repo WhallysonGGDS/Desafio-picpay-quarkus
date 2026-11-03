@@ -79,11 +79,10 @@ function TransferFlow({ balance }: { balance: string }) {
       void queryClient.invalidateQueries({ queryKey: sessionKey });
       void queryClient.invalidateQueries({ queryKey: statementKey });
     },
+    // O 401 (a sessão acabou) o cliente do app trata para qualquer chamada (providers.tsx): a guarda de rotas leva a
+    // /entrar?next=…
     onError: (error) => {
-      if (error.code === 'UNAUTHENTICATED') {
-        // A sessão acabou: a guarda de rotas vê o `null` e leva a /entrar?next=…
-        queryClient.setQueryData(sessionKey, null);
-      } else if (error.code === 'INSUFFICIENT_BALANCE') {
+      if (error.code === 'INSUFFICIENT_BALANCE') {
         // O saldo que a tela conhece está velho. Buscar o de verdade, senão a pessoa insiste num valor que não cabe.
         void queryClient.invalidateQueries({ queryKey: sessionKey });
       }

@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import { errorResponse } from '../test/api';
 import { marina } from '../test/fixtures';
+import { sessionKey } from './session';
 import { currentUrl, renderApp, renderRoutes } from '../test/render';
 import { server } from '../test/server';
 
@@ -168,6 +169,17 @@ describe('AppShell', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Não deu para sair. Sem conexão com o servidor.');
     expect(currentUrl(router)).toBe('/carteira');
     expect(screen.getByRole('navigation', { name: 'Principal' })).toBeInTheDocument();
+  });
+
+  // Quebra se: a sessão acabar (1 hora) com a pessoa numa tela que só consulta (o extrato, a busca de destinatário) e o app
+  // ficar mostrando um aviso e nada mais, em vez de levá-la a entrar, como já faz no envio (RF3).
+  it('o 401 de qualquer consulta (aqui, o extrato) leva ao login com o destino e derruba a sessão', async () => {
+    server.use(http.get('*/transaction', () => errorResponse(401, 'UNAUTHENTICATED')));
+
+    const { router, queryClient } = renderApp('/extrato', { user: marina });
+
+    await waitFor(() => expect(currentUrl(router)).toBe('/entrar?next=%2Fextrato'));
+    expect(queryClient.getQueryData(sessionKey)).toBeNull();
   });
 
   it('o 401 de uma chamada em andamento leva ao login com o destino', async () => {

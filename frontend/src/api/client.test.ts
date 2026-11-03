@@ -1,10 +1,10 @@
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { page, marina, rafael, summary, tx } from '../test/fixtures';
 import { errorResponse as backendError } from '../test/api';
 import { server } from '../test/server';
 import { ApiError } from './ApiError';
-import { createApi } from './client';
+import { createApi, TRANSFER_TIMEOUT_MS } from './client';
 import type { RegisterBody } from './types';
 
 // baseUrl padrão = a origem da página (no jsdom, http://localhost:3000): o app e a API são a mesma origem.
@@ -208,6 +208,59 @@ describe('POST', () => {
     server.use(http.post('*/auth/logout', () => new HttpResponse(null, { status: 204 })));
 
     await expect(api.logout()).resolves.toBeUndefined();
+  });
+});
+
+describe('transfer: prazo', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  // Uma conexão que nunca responde: só termina se alguém a abortar.
+  const hanging = (request: Request) =>
+    new Promise<Response>((_, reject) => {
+      request.signal.addEventListener('abort', () => reject(new DOMException('abortado', 'AbortError')));
+    });
+
+  // Quebra se: um envio sem resposta deixar a tela em "Autorizando…" para sempre (o fluxo congela enquanto há um envio a
+  // caminho e a pessoa não consegue nem conferir o extrato), ou o prazo vencer cedo demais e dar por perdido um envio lento.
+  it('sem resposta em 20 s o envio falha como NETWORK, nem um instante antes', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', hanging);
+    let outcome: unknown = 'pendente';
+    void api.transfer({ receiverId: 2, amount: '10.00' }).then(
+      () => (outcome = 'resolvido'),
+      (error: unknown) => (outcome = error),
+    );
+
+    await vi.advanceTimersByTimeAsync(TRANSFER_TIMEOUT_MS - 1);
+    expect(outcome).toBe('pendente');
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(outcome).toBeInstanceOf(ApiError);
+    expect(outcome).toMatchObject({ code: 'NETWORK', statusCode: 0 });
+    expect(TRANSFER_TIMEOUT_MS).toBe(20_000);
+  });
+
+  // Quebra se: o relógio ficar armado depois de uma resposta (um aborto tardio, ou um timer pendurado por envio).
+  it('uma resposta dentro do prazo desarma o relógio', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify(tx()), { status: 201, headers: { 'content-type': 'application/json' } }));
+
+    await expect(api.transfer({ receiverId: 2, amount: '10.00' })).resolves.toEqual(tx());
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  // Quebra se: o prazo valer também para a falha rápida (uma recusa de 422 não pode deixar um relógio para trás).
+  it('uma recusa do servidor também desarma o relógio', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ statusCode: 422, code: 'INSUFFICIENT_BALANCE', message: 'x' }), { status: 422, headers: { 'content-type': 'application/json' } }));
+
+    await expect(api.transfer({ receiverId: 2, amount: '10.00' })).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

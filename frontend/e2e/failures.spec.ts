@@ -78,6 +78,19 @@ test('sessão expira no meio do envio', async ({ page, request, context }) => {
   expect((await stubCalls()).authorize).toBe(0);
 });
 
+// A sessão dura 1 hora: ao vencer, qualquer tela que consulta o servidor (não só o envio) leva a pessoa a entrar de novo.
+test('sessão expira com a pessoa na carteira: o extrato leva ao login', async ({ page, request, context }) => {
+  await signIn(page, await newUser(request));
+  await page.goto('/carteira');
+  await expect(page.getByTestId('wallet-balance')).toBeVisible();
+
+  await context.clearCookies();
+  await page.getByRole('link', { name: 'Extrato', exact: true }).click();
+
+  await expect(page).toHaveURL('/entrar?next=%2Fextrato');
+  await expect(page.getByRole('heading', { name: 'Entrar na carteira' })).toBeVisible();
+});
+
 test('resultado desconhecido: sem reenvio', async ({ page, request }) => {
   await reachConfirmation(page, request, '250');
   let posts = 0;
