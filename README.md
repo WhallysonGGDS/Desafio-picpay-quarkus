@@ -957,7 +957,7 @@ node scripts/smoke-api.mjs
 
 ### Testes do front-end
 
-Hoje: **105** testes Java e **10** de integração sobre o artefato, **510** testes de unidade e de componente (Vitest, 37 arquivos) e **146** de ponta a ponta (Playwright: 145 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
+Hoje: **105** testes Java e **12** de integração sobre o artefato, **522** testes de unidade e de componente (Vitest, 38 arquivos) e **156** de ponta a ponta (Playwright: 155 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
 
 ```bash
 npm --prefix frontend run typecheck && npm --prefix frontend test
