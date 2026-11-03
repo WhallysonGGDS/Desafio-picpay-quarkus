@@ -1,0 +1,81 @@
+/* Cena fixada: a janela inteira. O arco só se desenha até 85% do scroll da cena; o resto é o descanso, com tudo aceso,
+   antes de ela soltar. */
+.context {
+  --arc: clamp(0, calc(var(--p) / 0.85), 1);
+  --land: clamp(0, calc((var(--p) - 0.85) * 6.67), 1);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(1rem, 4svh, 3rem);
+  padding: clamp(4.5rem, 11svh, 7rem) var(--gutter) clamp(1.5rem, 5svh, 3.5rem);
+}
+
+.title {
+  font-size: clamp(1.75rem, 1rem + 2.4vw, 3.25rem);
+  font-weight: 300;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+}
+
+/* O texto de cada decisão acende (opacidade) e sobe um pouco (transform) quando a luz chega ao nó. --lit vem do nó. */
+.decision {
+  position: absolute;
+  width: min(15rem, 80vw);
+  opacity: calc(0.14 + 0.86 * var(--lit));
+  transform: translateY(calc((1 - var(--lit)) * 10px));
+}
+
+.index {
+  display: block;
+  margin-bottom: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.question {
+  font-size: clamp(1.15rem, 1rem + 0.6vw, 1.5rem);
+  font-weight: 300;
+  line-height: 1.2;
+}
+
+.answer {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-small);
+  line-height: 1.45;
+  color: var(--text-2);
+  text-wrap: balance;
+}
+
+/* Arco vertical (caixa em pé: o celular, o tablet em pé): fica junto à borda esquerda, e o texto à direita de cada nó. Na
+   metade de baixo a curva volta para a direita depois do nó, então o texto se afasta mais (até ~2 rem em t = 0,8). */
+.decision {
+  left: calc(1.75rem + max(0, var(--t) - 0.5) * 7rem);
+  top: -0.9rem;
+}
+
+/* Arco horizontal: o texto vai para DENTRO do arco. Nos flancos, onde ele é inclinado, ao lado do nó; no meio, onde é quase
+   plano, logo abaixo. */
+[data-orientation='horizontal'] [data-side='start'] > .decision {
+  left: 1.5rem;
+  top: 0.1rem;
+}
+
+[data-orientation='horizontal'] [data-side='middle'] > .decision {
+  left: 50%;
+  top: 1.6rem;
+  text-align: center;
+  margin-left: calc(min(15rem, 80vw) / -2);
+}
+
+[data-orientation='horizontal'] [data-side='end'] > .decision {
+  left: auto;
+  right: 1.5rem;
+  top: 0.1rem;
+  text-align: right;
+}

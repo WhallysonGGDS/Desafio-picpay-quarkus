@@ -1,5 +1,11 @@
-/* Em tela larga o saldo ocupa as colunas 1 a 7 e as movimentações as colunas 9 a 12, com uma coluna de respiro
-   entre eles. No celular, empilha: primeiro o saldo. */
+/* O componente se adapta à largura que RECEBE, não à da janela (a vitrine o põe numa coluna estreita de uma janela larga):
+   o próprio componente é o contêiner da consulta. */
+.frame {
+  container-type: inline-size;
+}
+
+/* Com espaço (a partir de 56rem de largura do componente) o saldo ocupa as colunas 1 a 7 e as movimentações as colunas 9 a
+   12, com uma coluna de respiro entre eles. Sem espaço, empilha: primeiro o saldo. */
 .wallet {
   display: grid;
   align-content: start;
@@ -24,7 +30,7 @@
   min-width: 0;
 }
 
-@media (min-width: 64rem) {
+@container (min-width: 56rem) {
   .wallet {
     grid-template-columns: repeat(12, minmax(0, 1fr));
     column-gap: var(--sp-5);

@@ -6,6 +6,14 @@
   initial-value: 0;
 }
 
+/* O pouso: de 0 a 1 DEPOIS de a luz chegar ao destino. Cada cena o escreve a partir do próprio progresso (o anel da chegada
+   se expande ao longo do scroll que vem depois da chegada, não num estalo); a abertura o anima por tempo. */
+@property --land {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
 .scene {
   position: relative;
 }
@@ -16,11 +24,39 @@
   overflow: hidden;
 }
 
-/* O arco ocupa a caixa que a cena lhe dá; dentro dela, os dois caminhos e os nós ficam sobrepostos. */
+/* O arco ocupa a caixa que a cena lhe dá; dentro dela, os dois caminhos e os nós ficam sobrepostos. Ele se desenha por
+   `--arc-p`: o `--arc` que a cena escreve (para o arco fechar antes de a cena soltar, ou só quando a cena já está na janela)
+   ou, na falta dele, o `--p` da cena. A cena não pode redefinir `--p` a partir de si mesma (seria um ciclo): por isso o alias. */
 .arc {
+  --arc-p: var(--arc, var(--p));
   position: relative;
   width: 100%;
   height: 100%;
+}
+
+/* A abertura se desenha sozinha, uma vez, ao carregar (2,6 s, depois de 0,4 s), e quando a luz chega o destino pulsa. */
+.arc[data-timed] {
+  animation:
+    draw 2600ms var(--ease-in-out) 400ms both,
+    land 900ms var(--ease-out) 3000ms both;
+}
+
+@keyframes draw {
+  from {
+    --p: 0;
+  }
+  to {
+    --p: 1;
+  }
+}
+
+@keyframes land {
+  from {
+    --land: 0;
+  }
+  to {
+    --land: 1;
+  }
 }
 
 .arc svg {
@@ -29,19 +65,6 @@
   width: 100%;
   height: 100%;
   overflow: visible;
-}
-
-/* Duas orientações, uma por vez: vertical no celular, horizontal a partir de 768 px. */
-@media (min-width: 768px) {
-  .arc[data-orientation='auto'] .svgV {
-    display: none;
-  }
-}
-
-@media (max-width: 767px) {
-  .arc[data-orientation='auto'] .svgH {
-    display: none;
-  }
 }
 
 .track,
@@ -63,7 +86,7 @@
   stroke: var(--accent);
   stroke-width: 1.5px;
   stroke-dasharray: 1 2;
-  stroke-dashoffset: calc(1 - var(--p));
+  stroke-dashoffset: calc(1 - var(--arc-p));
 }
 
 /* A cabeça: um traço minúsculo que, com a ponta redonda, vira um ponto. Anda em `--p`, na frente do traço de luz. */
@@ -71,7 +94,7 @@
 .head {
   stroke: var(--accent);
   stroke-dasharray: 0.0001 2;
-  stroke-dashoffset: calc(0 - var(--p));
+  stroke-dashoffset: calc(0 - var(--arc-p));
 }
 
 .halo {
@@ -83,8 +106,7 @@
   stroke-width: 6px;
 }
 
-/* Nós: uma âncora sem tamanho no ponto do arco; o ponto e o conteúdo se posicionam a partir dela. Mobile primeiro:
-   as posições verticais; a partir de 768 px, as horizontais. */
+/* Nós: uma âncora sem tamanho no ponto do arco desenhado; o ponto e o conteúdo se posicionam a partir dela. */
 .nodes {
   position: absolute;
   inset: 0;
@@ -94,29 +116,12 @@
 }
 
 .node {
-  --lit: clamp(0, calc((var(--p) - var(--t)) * 30), 1);
+  --lit: clamp(0, calc((var(--arc-p) - var(--t)) * 30), 1);
   position: absolute;
-  left: var(--xv);
-  top: var(--yv);
+  left: var(--x);
+  top: var(--y);
   width: 0;
   height: 0;
-}
-
-@media (min-width: 768px) {
-  .arc[data-orientation='auto'] .node {
-    left: var(--xh);
-    top: var(--yh);
-  }
-}
-
-.arc[data-orientation='horizontal'] .node {
-  left: var(--xh);
-  top: var(--yh);
-}
-
-.arc[data-orientation='vertical'] .node {
-  left: var(--xv);
-  top: var(--yv);
 }
 
 /* O ponto acende (opacidade) e cresce (escala) quando a luz passa: só transform e opacidade. */
@@ -132,15 +137,83 @@
   transform: translate(-50%, -50%) scale(calc(0.7 + 0.3 * var(--lit)));
 }
 
-/* Esqueleto do motor (as cenas de verdade entram depois): cada cena ocupa a janela e centraliza o que tem. */
-.placeholder {
-  display: grid;
-  align-content: center;
-  gap: var(--sp-6);
-  min-height: 100svh;
-  padding: var(--gutter);
+/* Pontas: a partida (ponto cheio) e a chegada (anel que acende e pulsa quando a luz chega). Âncoras sem tamanho, como os nós. */
+.end {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 
-.placeholderArc {
-  height: 40svh;
+.origin,
+.target,
+.arrived,
+.pulse {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.origin {
+  background: var(--text);
+}
+
+.target {
+  background: var(--bg);
+  border: 1px solid var(--text-3);
+}
+
+/* A chegada acende (o ponto de acento) quando o arco fecha, e um anel se expande e some no pouso (--land, que vem depois da
+   chegada). Escrubados pelo scroll: ao voltar, apagam. Só opacidade e escala. */
+.end[data-end='target'] {
+  --lit: clamp(0, calc((var(--arc-p) - 0.985) * 66), 1);
+  --k: var(--land);
+}
+
+.arrived {
+  background: var(--accent);
+  opacity: var(--lit, 0);
+}
+
+.pulse {
+  border: 1px solid var(--accent);
+  opacity: calc(0.9 * (1 - var(--k, 0)) * min(1, var(--k, 0) * 40));
+  transform: translate(-50%, -50%) scale(calc(1 + 2.4 * var(--k, 0)));
+}
+
+.endLabel {
+  position: absolute;
+  top: 1.1rem;
+  font-size: var(--fs-small);
+  white-space: nowrap;
+  color: var(--text-2);
+}
+
+.end[data-end='origin'] .endLabel {
+  left: 0;
+}
+
+.end[data-end='target'] .endLabel {
+  right: 0;
+  color: var(--text);
+}
+
+/* Uma linha de título por vez: cada frase quebra onde o sentido quebra. */
+.line {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Sem movimento: a abertura já nasce desenhada. */
+  .arc[data-timed] {
+    animation: none;
+    --p: 1;
+    --land: 1;
+  }
 }

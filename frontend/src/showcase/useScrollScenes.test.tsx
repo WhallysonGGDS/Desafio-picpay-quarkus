@@ -1,9 +1,10 @@
-import { act, render } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { StrictMode, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Scene, type SceneId } from './Scene';
+import { SCENE_PROGRESS_EVENT } from './motion';
+import { Scene, useSceneProgress, type SceneId } from './Scene';
 import { useScrollScenes } from './useScrollScenes';
 
 // O Lenis mexe em roda, toque e requestAnimationFrame do navegador: aqui só interessa quando nasce, com quê e quando morre.
@@ -56,6 +57,10 @@ function motionPreference(initiallyReduced: boolean) {
 
 const IDS: SceneId[] = [1, 2, 3, 4, 5, 6];
 
+function Probe() {
+  return <output data-testid="probe">{useSceneProgress()}</output>;
+}
+
 function Harness() {
   const root = useRef<HTMLDivElement>(null);
   useScrollScenes(root);
@@ -64,6 +69,7 @@ function Harness() {
       {IDS.map((id) => (
         <Scene key={id} id={id} pinned={id === 2 || id === 3}>
           <p>cena {id}</p>
+          {id === 3 && <Probe />}
         </Scene>
       ))}
     </div>
@@ -126,6 +132,43 @@ describe('useScrollScenes', () => {
     tick(2);
 
     expect(created[0]?.raf).toHaveBeenCalledWith(2000);
+  });
+
+  // Quebra se: o motor não escrever o progresso (atributo e variável CSS) ou não avisar a cena (o saldo da cena 3 é texto
+  // e só anda se alguém o avisar), ou avisar a cada quadro mesmo sem mudança (um render do React por quadro, à toa).
+  it('escreve o progresso na cena e avisa quem escuta, só quando ele muda', () => {
+    motionPreference(false);
+    const { container } = render(<Harness />);
+    const scene = container.querySelector('[data-scene="3"]') as HTMLElement;
+    const trigger = ScrollTrigger.getAll()[2] as ScrollTrigger;
+    const update = (progress: number) => act(() => trigger.vars.onUpdate?.({ progress } as ScrollTrigger));
+    let notices = 0;
+    scene.addEventListener(SCENE_PROGRESS_EVENT, () => (notices += 1));
+
+    update(0.4);
+
+    expect(scene).toHaveAttribute('data-progress', '0.400');
+    expect(scene.style.getPropertyValue('--p')).toBe('0.400');
+    expect(screen.getByTestId('probe')).toHaveTextContent('0.4');
+    expect(notices).toBe(1);
+
+    update(0.4);
+    update(0.4001); // mesmas três casas: nada a avisar
+    expect(notices).toBe(1);
+
+    update(0.5);
+    expect(notices).toBe(2);
+    expect(screen.getByTestId('probe')).toHaveTextContent('0.5');
+  });
+
+  // Quebra se: com movimento reduzido o texto que depende do scroll ficar no estado de antes (o saldo mostraria R$ 1.000,00
+  // para quem não pode ver a animação que o levaria a R$ 750,00).
+  it('com movimento reduzido, quem escuta já recebe o progresso final', () => {
+    motionPreference(true);
+
+    render(<Harness />);
+
+    expect(screen.getByTestId('probe')).toHaveTextContent('1');
   });
 
   // Quebra se: sair da vitrine deixar o Lenis escutando a roda, ScrollTriggers órfãos ou pins no DOM: a carteira herdaria a

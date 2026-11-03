@@ -19,22 +19,24 @@ export interface WalletBalanceProps {
 // e a vitrine usa o componente puro, com dados de demonstração.
 export function WalletBalance({ name, balance, movements, actions, children }: WalletBalanceProps) {
   return (
-    <section className={styles.wallet} aria-label={`Carteira de ${name}`}>
-      <div className={styles.balance}>
-        <p className={styles.label}>Saldo</p>
-        <Money value={balance} variant="display" data-testid="wallet-balance" />
-        {actions && <div className={styles.actions}>{actions}</div>}
-      </div>
-      <div className={styles.movements}>
-        {movements.length > 0 && (
-          <MovementList label="Últimas movimentações">
-            {movements.map((tx) => (
-              <MovementRow key={tx.id} tx={tx} />
-            ))}
-          </MovementList>
-        )}
-        {children}
-      </div>
-    </section>
+    <div className={styles.frame}>
+      <section className={styles.wallet} aria-label={`Carteira de ${name}`}>
+        <div className={styles.balance}>
+          <p className={styles.label}>Saldo</p>
+          <Money value={balance} variant="display" data-testid="wallet-balance" />
+          {actions && <div className={styles.actions}>{actions}</div>}
+        </div>
+        <div className={styles.movements}>
+          {movements.length > 0 && (
+            <MovementList label="Últimas movimentações">
+              {movements.map((tx) => (
+                <MovementRow key={tx.id} tx={tx} />
+              ))}
+            </MovementList>
+          )}
+          {children}
+        </div>
+      </section>
+    </div>
   );
 }

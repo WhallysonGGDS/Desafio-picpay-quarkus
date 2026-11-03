@@ -3,18 +3,19 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
 import 'lenis/dist/lenis.css';
 import { useEffect, type RefObject } from 'react';
-import { formatProgress, prefersReducedMotion } from './motion';
+import { formatProgress, prefersReducedMotion, SCENE_PROGRESS_EVENT } from './motion';
 
 // Quantas alturas de janela de rolagem uma cena fixada consome enquanto o progresso dela vai de 0 a 1.
 const PIN_DISTANCE = 1.5;
 const HERO = '1';
 
-/** Escreve o progresso da cena (três casas) no atributo e na variável CSS, só se mudou. */
+/** Escreve o progresso da cena (três casas) no atributo e na variável CSS e avisa quem escuta (useSceneProgress), só se mudou. */
 function write(scene: HTMLElement, progress: number): void {
   const value = formatProgress(progress);
   if (scene.dataset['progress'] === value) return;
   scene.dataset['progress'] = value;
   scene.style.setProperty('--p', value);
+  scene.dispatchEvent(new Event(SCENE_PROGRESS_EVENT));
 }
 
 /**

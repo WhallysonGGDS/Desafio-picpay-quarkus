@@ -70,7 +70,7 @@ export function RecipientStep({ term, onTermChange, selected, onSelect, onContin
         error={failure ? messageFor(failure) : message}
         onChange={(event) => onTermChange(event.target.value)}
       />
-      <div className={styles.results} aria-busy={busy || undefined}>
+      <div aria-busy={busy || undefined}>
         <div role="status" className={styles.status}>
           {tooShort && 'Digite ao menos 3 caracteres.'}
           {results?.length === 0 && 'Ninguém encontrado com esse e-mail ou documento.'}

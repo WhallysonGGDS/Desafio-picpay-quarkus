@@ -1,0 +1,85 @@
+/* A abertura: a janela inteira, a frase em cima à esquerda, o arco por baixo, "Role" na base. A frase cede (sobe e some) à
+   medida que a página rola: o arco passa a ser o assunto. Só transform e opacidade. */
+.impact {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto minmax(10rem, 1fr) auto;
+  min-height: 100svh;
+  padding: 0 var(--gutter);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 3.5rem;
+}
+
+.title {
+  align-self: start;
+  margin-top: clamp(1.5rem, 8svh, 5.5rem);
+  font-size: min(var(--fs-display-xl), 9.2vw);
+  font-weight: 200;
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  opacity: clamp(0, calc(1 - var(--p) * 1.5), 1);
+  transform: translateY(calc(var(--p) * -6svh));
+}
+
+/* O arco ocupa o que sobra entre o título e a base: se ajusta a qualquer altura de janela, sem encostar na frase. */
+.arc {
+  position: relative;
+  margin: clamp(1.25rem, 4svh, 3rem) 0 clamp(1rem, 4svh, 2.5rem);
+  pointer-events: none;
+}
+
+/* "Role" e uma linha de 1 px que se preenche com o scroll da abertura: diz quanto falta para ela acabar. */
+.scroll {
+  display: flex;
+  padding-bottom: clamp(1.25rem, 4svh, 2.5rem);
+  align-items: center;
+  gap: var(--sp-4);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+.rule {
+  position: relative;
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.rule::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--text-2);
+  transform: scaleX(var(--p));
+  transform-origin: left;
+}
+
+/* Movimento reduzido: o motor fixa o progresso de toda cena em 1 ("o estado final"), mas para a abertura o final do scroll é a
+   frase sumida. Sem o scroll, a abertura fica em repouso: a frase inteira, e a linha do "Role" vazia. */
+@media (prefers-reduced-motion: reduce) {
+  .title {
+    opacity: 1;
+    transform: none;
+  }
+
+  .rule::after {
+    transform: scaleX(0);
+  }
+}
+
+@media (max-width: 767px) {
+  .title {
+    font-size: min(var(--fs-display-xl), 13.5vw);
+  }
+
+  /* No celular a caixa é alta e estreita: o arco fica baixo, com a proporção de um arco (não de uma torre), e o vazio fica entre ele e a frase. */
+  .arc {
+    align-self: end;
+    height: min(100%, 78vw);
+  }
+}

@@ -32,7 +32,7 @@ export function AppShell() {
           ))}
         </nav>
         <div className={styles.account}>
-          <span className={styles.name}>{user?.firstName}</span>
+          <span>{user?.firstName}</span>
           <Button variant="quiet" loading={logout.isPending} onClick={() => logout.mutate()}>
             {logout.isPending ? 'Saindo…' : 'Sair'}
           </Button>

@@ -1,0 +1,42 @@
+.conversion {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: var(--sp-7);
+  min-height: 100svh;
+  padding: var(--sp-section) var(--gutter) clamp(5.5rem, 14svh, 8rem);
+}
+
+.title {
+  font-size: min(var(--fs-display-xl), 14vw);
+  font-weight: 200;
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+}
+
+.actions {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-4);
+}
+
+/* O botão principal da página: maior que o dos demais, porque é o único próximo passo. */
+.cta {
+  min-height: 4.25rem;
+  padding: 0 var(--sp-6);
+  font-size: clamp(1.05rem, 1rem + 0.5vw, 1.375rem);
+}
+
+/* O link discreto tem um respiro interno de 4 px: recua para o texto alinhar com a borda do botão. */
+.actions > :last-child:not(:first-child) {
+  margin-left: calc(var(--sp-1) * -1);
+}
+
+.credit {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  bottom: clamp(1.25rem, 4svh, 2.5rem);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}

@@ -1,0 +1,44 @@
+/* A cena passa pela janela de 0 (entrando) a 1 (saindo). O grupo (arco, palavra, frase) fica no CENTRO da cena: o quadro
+   completo coincide com o momento em que ela ocupa a janela (por volta de 0,5), e a coreografia corre em volta dele: o arco
+   fecha por volta de 0,46, a palavra chega, a frase vem depois e o anel do destino se expande no pouso. */
+.climax {
+  --arc: clamp(0, calc((var(--p) - 0.12) / 0.34), 1);
+  --land: clamp(0, calc((var(--p) - 0.46) * 5), 1);
+  display: grid;
+  align-content: center;
+  min-height: 100svh;
+  padding: clamp(2rem, 6svh, 4rem) var(--gutter);
+}
+
+.arc {
+  height: clamp(10rem, 36svh, 24rem);
+  margin-bottom: clamp(1rem, 3svh, 2.5rem);
+  pointer-events: none;
+}
+
+.word {
+  --k: clamp(0, calc((var(--p) - 0.32) * 6.5), 1);
+  /* O maior momento tipográfico da página: a palavra ocupa o quadro. */
+  font-size: clamp(4.5rem, 19vw, 17rem);
+  font-weight: 200;
+  line-height: 0.94;
+  letter-spacing: -0.05em;
+  opacity: var(--k);
+  transform: translateY(calc((1 - var(--k)) * 4svh));
+}
+
+.line {
+  --k: clamp(0, calc((var(--p) - 0.42) * 6.5), 1);
+  margin-top: var(--sp-5);
+  font-size: var(--fs-title);
+  font-weight: 300;
+  color: var(--text-2);
+  opacity: var(--k);
+  transform: translateY(calc((1 - var(--k)) * 2svh));
+}
+
+@media (max-width: 767px) {
+  .arc {
+    height: clamp(8rem, 30svh, 14rem);
+  }
+}
