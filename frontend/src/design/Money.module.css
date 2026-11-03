@@ -30,3 +30,9 @@
   letter-spacing: 0;
   color: var(--text-2);
 }
+
+/* Em mono o ponto e a vírgula ocupam uma célula inteira de algarismo; no tamanho grande isso deixa a vírgula solta
+   ("750 ,00"). Recuam para os algarismos, que ficam com o seu ritmo. */
+.separator {
+  margin-inline: -0.17em;
+}

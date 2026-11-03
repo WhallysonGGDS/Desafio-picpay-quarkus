@@ -1,4 +1,4 @@
-import type { HTMLAttributes } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 import { formatBRL, formatBRLFromApi } from '../lib/money';
 import styles from './Money.module.css';
 
@@ -8,6 +8,20 @@ export interface MoneyProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: 'display' | 'row' | 'inline';
   /** Sinal à frente do valor, no mesmo texto ("−R$ 250,00"). O menos é o tipográfico, U+2212, não o hífen. */
   sign?: '+' | '−';
+}
+
+// Em mono cada sinal ocupa uma célula inteira, e no tamanho grande a vírgula fica solta ("750 ,00"): cada ponto e vírgula do
+// número vai no seu span, que o CSS aproxima dos algarismos. O texto não muda (leitor de tela, cópia e busca leem o mesmo).
+function withSeparators(number: string): ReactNode[] {
+  return number.split(/([.,])/).map((part, index) =>
+    part === '.' || part === ',' ? (
+      <span key={index} className={styles.separator} data-separator="">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
 }
 
 // Dinheiro sempre em mono tabular: os algarismos têm a mesma largura e as colunas se alinham.
@@ -26,7 +40,7 @@ export function Money({ value, variant = 'inline', sign = undefined, className, 
       {split ? (
         <>
           <span className={styles.currency}>{split[1]}</span>
-          {split[2]}
+          {withSeparators(split[2] ?? '')}
         </>
       ) : (
         text
