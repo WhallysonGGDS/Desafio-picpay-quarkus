@@ -1,6 +1,6 @@
 package dev.whallyson.infra;
 
-import io.quarkus.arc.profile.IfBuildProfile;
+import io.quarkus.arc.profile.UnlessBuildProfile;
 import io.quarkus.arc.properties.UnlessBuildProperty;
 import io.quarkus.vertx.http.runtime.filters.Filters;
 import io.vertx.core.http.HttpHeaders;
@@ -12,8 +12,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.List;
 
-// Fallback das rotas do front (SPA) em produção: quem abre ou atualiza /carteira num navegador recebe o index.html,
-// que o Quinoa serve na raiz, e o roteador do React decide a tela.
+// Fallback das rotas do front (SPA), em produção e em dev: quem abre ou atualiza /carteira num navegador recebe o
+// index.html, que o Quinoa serve na raiz, e o roteador do React decide a tela.
 //
 // Por que não o fallback do próprio Quinoa (quarkus.quinoa.enable-spa-routing): quando nenhum recurso REST casa
 // com o caminho, o Quarkus REST só repassa o pedido adiante se NÃO existir ExceptionMapper aplicável a
@@ -22,9 +22,10 @@ import java.util.List;
 //
 // Só reescreve navegação de verdade: GET/HEAD com Accept text/html, caminho sem extensão de arquivo e fora dos
 // prefixos da API. Cliente da API que erra a URL continua recebendo o JSON de erro, e arquivo ausente continua 404.
-// Em dev o Quinoa faz proxy para o Vite (que já devolve o index.html), e nos testes o Quinoa fica desligado.
+// Em dev a raiz é o proxy do Quinoa para o Vite, que devolve o index.html (com o cliente de recarga ao vivo); sem este
+// filtro, atualizar a página em /carteira dava 404 também em dev. Nos testes o Quinoa fica desligado e o filtro não existe.
 @ApplicationScoped
-@IfBuildProfile("prod")
+@UnlessBuildProfile("test")
 @UnlessBuildProperty(name = "quarkus.quinoa", stringValue = "false", enableIfMissing = true)
 public class SpaFallback {
 
