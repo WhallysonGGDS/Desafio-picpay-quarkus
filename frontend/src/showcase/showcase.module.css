@@ -30,7 +30,10 @@
 @media (max-width: 62rem) and (max-height: 36rem) {
   .scene[data-pinned] {
     height: auto;
-    overflow: visible;
+    /* Sem corte na vertical (a cena cresce com o que tem dentro); na horizontal o `clip` corta a caixa de um item que passa da
+       janela (o texto dentro dela quebra e cabe) sem virar contêiner de rolagem nem criar rolagem lateral na página. */
+    overflow-x: clip;
+    overflow-y: visible;
   }
 }
 

@@ -176,7 +176,9 @@ test('nenhum texto da vitrine fica cortado nem por cima de outro, em nenhum tama
       const walker = document.createTreeWalker(scene, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const text = node.textContent?.trim() ?? '';
-        if (!text || node.parentElement?.closest('.sr-only')) continue;
+        // O texto só para leitor de tela não ocupa lugar; o ponto e a vírgula do saldo recuam de propósito para os algarismos (a caixa
+        // deles entra na dos vizinhos, a tinta não): são do Money, e o teste do Money os cobre.
+        if (!text || node.parentElement?.closest('.sr-only, [data-separator]')) continue;
         const range = document.createRange();
         range.selectNodeContents(node);
         for (const rect of Array.from(range.getClientRects())) if (rect.width > 1 && rect.height > 1) items.push({ node, text, rect });

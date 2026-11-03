@@ -25,12 +25,22 @@ function compactBlock(source: string): string | null {
 // que ela perde a altura fixa. Se os dois textos divergirem, há janelas em que a cena não prende mas continua com altura de
 // janela e o conteúdo some, ou prende sem a altura. O jsdom não aplica CSS: o que une os dois é este teste.
 describe('janela compacta (celular deitado): o CSS e o motor falam da mesma janela', () => {
-  it('a cena fixada perde a altura fixa e o corte, na mesma consulta do motor', () => {
+  it('a cena fixada perde a altura fixa e o corte na vertical, na mesma consulta do motor', () => {
     const block = compactBlock(css('showcase.module.css'));
 
     expect(block, `showcase.module.css precisa de @media ${COMPACT_WINDOW_QUERY}`).not.toBeNull();
     expect(block).toMatch(/\.scene\[data-pinned\]\s*\{[^}]*height:\s*auto/);
-    expect(block).toMatch(/\.scene\[data-pinned\]\s*\{[^}]*overflow:\s*visible/);
+    expect(block).toMatch(/\.scene\[data-pinned\]\s*\{[^}]*overflow-y:\s*visible/);
+  });
+
+  // Quebra se: a cena solta deixar a caixa de um item (240 px de largura, com o texto quebrado dentro) passar da janela e criar
+  // rolagem lateral na página: em 320 px o 4º item da cena 2 passava 24 px. Só o corte na horizontal: o texto não é cortado
+  // (um teste de navegador confere), só a caixa vazia ao redor dele.
+  it('e continua cortando na horizontal, sem criar um contêiner de rolagem', () => {
+    const block = compactBlock(css('showcase.module.css'));
+
+    expect(block).toMatch(/\.scene\[data-pinned\]\s*\{[^}]*overflow-x:\s*clip/);
+    expect(block).not.toMatch(/overflow:\s*(hidden|auto|scroll)/);
   });
 
   it('o palco do contexto vira uma coluna estreita e alta, para o arco ficar vertical', () => {
