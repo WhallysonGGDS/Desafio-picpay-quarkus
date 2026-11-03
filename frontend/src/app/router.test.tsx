@@ -224,3 +224,36 @@ describe('título da página (WCAG 2.4.2)', () => {
     await waitFor(() => expect(document.title).toBe('Arco'));
   });
 });
+
+// Num app de uma página só o navegador não move o foco ao trocar de tela (WCAG 2.4.3): ele ficaria no link da nav, ou no corpo da página
+// se o botão clicado saiu com a tela. O RouteFocus o leva ao título da tela nova (o isolado dele está em RouteFocus.test).
+describe('foco ao trocar de tela', () => {
+  // Quebra se: a nav continuar com o foco depois do clique: o leitor de tela não anuncia a tela nova e o Tab seguinte segue da nav.
+  it('ir pela nav a outra tela leva o foco ao título dela', async () => {
+    renderApp('/carteira', { user: marina });
+    const nav = await mainNav();
+
+    await userEvent.setup().click(within(nav).getByRole('link', { name: 'Extrato' }));
+
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Extrato' })).toHaveFocus());
+  });
+
+  // Quebra se: sair deixar o foco no corpo da página, onde o botão "Sair" estava antes de a tela sumir.
+  it('sair leva o foco ao título do login', async () => {
+    server.use(http.post('*/auth/logout', () => new HttpResponse(null, { status: 204 })));
+    renderApp('/carteira', { user: marina });
+    await mainNav();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Sair' }));
+
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Entrar na carteira' })).toHaveFocus());
+  });
+
+  // Quebra se: abrir o app tirar o foco do lugar em que o navegador o deixou.
+  it('a primeira tela não rouba o foco', async () => {
+    renderApp('/extrato', { user: marina });
+
+    await screen.findByRole('heading', { level: 1, name: 'Extrato' });
+    expect(document.body).toHaveFocus();
+  });
+});

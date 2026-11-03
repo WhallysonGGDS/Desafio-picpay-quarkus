@@ -549,3 +549,45 @@ test.describe('política de segurança do conteúdo (CSP)', () => {
     expect(found).toEqual([]);
   });
 });
+
+// WCAG 2.4.3: num app de uma página só, trocar de tela não é uma navegação para o navegador, e ele não move o foco nem a rolagem.
+// O foco ficaria no link da nav (ou no corpo da página, se o botão clicado saiu com a tela) e a tela nova abriria na altura da
+// anterior. É o que RouteFocus corrige; aqui se confere no navegador, com teclado e com a vitrine rolada até o fim.
+test.describe('ao trocar de tela', () => {
+  test('o foco vai ao título da tela nova, e o Tab seguinte entra nela em vez de seguir da nav', async ({ page }) => {
+    await signIn(page, DEMO.marina);
+    await page.goto('/carteira');
+    await expect(page.getByTestId('wallet-balance')).toBeVisible();
+    // A primeira tela deixa o foco com o navegador: nada é roubado de quem acabou de abrir o app.
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+
+    // Pelo teclado, que é quando o anel de foco (:focus-visible) aparece: o título, focado por código, não pode ganhar um.
+    await page.getByRole('navigation', { name: 'Principal' }).getByRole('link', { name: 'Extrato' }).focus();
+    await page.keyboard.press('Enter');
+    const title = page.getByRole('heading', { level: 1, name: 'Extrato' });
+    await expect(title).toBeFocused();
+    expect(await title.evaluate((element) => getComputedStyle(element).outlineStyle), 'o título focado por código não leva anel').toBe('none');
+
+    // O Tab seguinte é o primeiro controle da tela (a aba escolhida do extrato), e não o item seguinte da nav.
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('tab', { name: 'Tudo' })).toBeFocused();
+  });
+
+  test('a tela nova abre no topo, mesmo vindo do fim da vitrine', async ({ page }) => {
+    // Janela baixa: o cadastro é mais alto que ela, e é nessa altura que a rolagem da vitrine, se mantida, esconde o título.
+    await page.setViewportSize({ width: 360, height: 640 });
+    await page.goto('/');
+    await expect(page.locator('[data-scene]')).toHaveCount(6);
+    for (let step = 0; step < 14; step += 1) {
+      await page.mouse.wheel(0, 700);
+      await page.waitForTimeout(60);
+    }
+    expect(await page.evaluate(() => window.scrollY), 'a vitrine tem de estar rolada para o teste valer').toBeGreaterThan(1000);
+
+    await page.getByRole('link', { name: 'Abrir minha carteira' }).click();
+    await expect(page).toHaveURL('/criar-conta');
+
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect(page.getByRole('heading', { level: 1, name: 'Criar minha carteira' })).toBeFocused();
+  });
+});

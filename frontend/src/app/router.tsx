@@ -11,6 +11,7 @@ import { PublicShell } from './layouts/PublicShell';
 import { NotFound } from './pages/NotFound';
 import { RedirectIfSignedIn } from './RedirectIfSignedIn';
 import { RequireSession } from './RequireSession';
+import { RouteFocus } from './RouteFocus';
 import { Splash } from './Splash';
 
 // A vitrine (GSAP, Lenis) é um chunk à parte: só quem abre a raiz o baixa.
@@ -18,39 +19,44 @@ const Showcase = lazy(() => import('../showcase/Showcase'));
 
 export const routes: RouteObject[] = [
   {
-    path: ROUTES.home,
-    element: (
-      <Suspense fallback={<Splash />}>
-        <Showcase />
-      </Suspense>
-    ),
-  },
-  {
-    element: <RedirectIfSignedIn />,
+    element: <RouteFocus />,
     children: [
       {
-        element: <PublicShell />,
-        children: [
-          { path: ROUTES.login, element: <LoginPage /> },
-          { path: ROUTES.register, element: <RegisterPage /> },
-        ],
+        path: ROUTES.home,
+        element: (
+          <Suspense fallback={<Splash />}>
+            <Showcase />
+          </Suspense>
+        ),
       },
-    ],
-  },
-  {
-    element: <RequireSession />,
-    children: [
       {
-        element: <AppShell />,
+        element: <RedirectIfSignedIn />,
         children: [
-          { path: ROUTES.wallet, element: <WalletPage /> },
-          { path: ROUTES.transfer, element: <TransferPage /> },
-          { path: ROUTES.statement, element: <StatementPage /> },
+          {
+            element: <PublicShell />,
+            children: [
+              { path: ROUTES.login, element: <LoginPage /> },
+              { path: ROUTES.register, element: <RegisterPage /> },
+            ],
+          },
         ],
       },
+      {
+        element: <RequireSession />,
+        children: [
+          {
+            element: <AppShell />,
+            children: [
+              { path: ROUTES.wallet, element: <WalletPage /> },
+              { path: ROUTES.transfer, element: <TransferPage /> },
+              { path: ROUTES.statement, element: <StatementPage /> },
+            ],
+          },
+        ],
+      },
+      { path: '*', element: <NotFound /> },
     ],
   },
-  { path: '*', element: <NotFound /> },
 ];
 
 export function createAppRouter() {

@@ -292,6 +292,7 @@ Tudo isto é conferido por testes automáticos (veja [Testes do front-end](#test
 - **Largura:** nenhuma tela rola na horizontal a 320 px, e nenhum texto da vitrine fica cortado nem por cima de outro em janelas de 320×568 a 1440×900.
 - **Tamanho e cache:** o pacote de entrada tem cerca de **127 kB** em gzip (orçamento: 170 kB) e o da vitrine, cerca de **55 kB** (orçamento: 70 kB); o GSAP não entra no de entrada. O servidor comprime (gzip) o HTML, os pacotes e o JSON, serve os pacotes de nome-hash com cache longo (`immutable`) e o `index.html` com `no-cache`, para um novo build chegar na hora. Nenhuma requisição sai da própria origem.
 - **Títulos:** cada tela tem o seu (`Carteira | Arco`, `Extrato | Arco`…), que é o que a aba, o histórico e o leitor de tela mostram ao trocar de tela.
+- **Foco e rolagem:** ao trocar de tela o foco vai ao título da nova (à `main`, se não houver título) e a página volta ao topo, como numa página nova; o "voltar" do navegador mantém a rolagem que ele guardou, e a primeira tela nunca recebe foco à força. Sem isso o foco ficava no link da nav e o cadastro aberto pelo fim da vitrine aparecia rolado até o fim.
 - **Cabeçalhos de segurança:** em produção o servidor manda `Content-Security-Policy` (só a própria origem: nenhum script, estilo, imagem ou fonte de fora, nenhum `eval`), `X-Frame-Options: DENY` e, em qualquer perfil, `X-Content-Type-Options: nosniff` e `Referrer-Policy`. O teste de integração confere a política inteira no JAR e o de navegador prova que ela é aplicada (script embutido, `eval`, estilo embutido e conexão a outra origem são barrados; nem a própria origem enquadra o app) e que o app inteiro, da vitrine ao envio, roda sem uma única violação.
 
 ### Rodar e construir
@@ -974,7 +975,7 @@ O Playwright sobe sozinho o [stub](#sem-acesso-ao-utildevitools-stub-local) (por
 | `app.spec.ts` | Cadastro pela tela, envio de ponta a ponta, extrato, saída e os dois avisos; login que volta ao destino pedido; lojista que não envia |
 | `failures.spec.ts` | Autorizador que recusa e que cai, saldo insuficiente, sessão que vence (no envio e ao abrir o extrato) e resultado desconhecido sem reenvio |
 | `showcase.spec.ts` | As seis cenas em quatro tamanhos de janela: progresso, saldo caindo com o scroll, CTA e links, movimento reduzido, cenas fixadas |
-| `quality.spec.ts` | axe-core, 320 px, texto cortado ou sobreposto, foco coberto, movimento reduzido sem atrasos, console limpo, fontes e origens, ícone e título de cada tela |
+| `quality.spec.ts` | axe-core, 320 px, texto cortado ou sobreposto, foco coberto, movimento reduzido sem atrasos, console limpo, fontes e origens, ícone e título de cada tela, foco e rolagem ao trocar de tela, política de segurança do conteúdo (CSP) |
 | `hostile.spec.ts` | Entradas hostis: `?next=` que tentaria sair da origem, valores como `1e3` ou `0,001`, CPF com letras e três cliques rápidos em "Enviar" |
 
 Os projetos do Playwright são `desktop` (1440×900) e `phone` (390×844) para todos os arquivos, mais `notebook` (1366×768) e `tablet` (768×1024) só para a vitrine. **Só o Chromium** é exercitado.

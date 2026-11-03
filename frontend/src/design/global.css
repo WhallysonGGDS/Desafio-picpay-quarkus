@@ -48,6 +48,13 @@ input {
   outline-offset: 3px;
 }
 
+/* O título e a área principal recebem o foco só por código, quando a tela muda (RouteFocus) e a cada passo do envio: não são controles
+   e o Tab não para neles, então não levam o anel (o anel é de quem se opera). */
+h1:focus,
+main:focus {
+  outline: none;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

@@ -59,11 +59,6 @@
   text-wrap: balance;
 }
 
-.title:focus,
-.title:focus-visible {
-  outline: none;
-}
-
 .quiet {
   margin-left: calc(var(--sp-1) * -1);
 }
