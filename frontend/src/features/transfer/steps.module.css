@@ -1,0 +1,33 @@
+/* O que os passos da transferência dividem: a fileira de ações e as frases de resultado. */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-5);
+  margin-top: var(--sp-6);
+}
+
+/* O botão discreto tem um respiro interno de 4 px: recua para o texto alinhar com a coluna. */
+.actions > :last-child:not(:first-child) {
+  margin-left: calc(var(--sp-1) * -1);
+}
+
+.alert {
+  font-size: var(--fs-small);
+  color: var(--danger);
+}
+
+/* A frase que fecha uma transferência: no tamanho de título, é a única coisa que a tela precisa dizer. */
+.sentence {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+/* O aviso de que não se sabe o que houve: corpo de texto, em cor cheia, porque diz o que fazer. */
+.notice {
+  max-width: 32rem;
+  color: var(--text);
+}

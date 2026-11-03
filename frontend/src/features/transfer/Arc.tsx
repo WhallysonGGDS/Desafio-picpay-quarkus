@@ -1,12 +1,17 @@
 import styles from './Arc.module.css';
 
-export type ArcState = 'idle' | 'authorizing' | 'landed' | 'retracted';
+/**
+ * `unconfirmed`: não se sabe se o envio aconteceu. O desenho é o de repouso (o arco não afirma nada), mas o anúncio
+ * não é o de `idle`: "Pronto para enviar" convidaria ao reenvio que o fluxo proíbe.
+ */
+export type ArcState = 'idle' | 'authorizing' | 'landed' | 'retracted' | 'unconfirmed';
 
 const ANNOUNCEMENT: Record<ArcState, string> = {
   idle: 'Pronto para enviar',
   authorizing: 'Autorizando…',
   landed: 'Enviado',
   retracted: 'Não enviado',
+  unconfirmed: 'Sem confirmação',
 };
 
 // Um arco entre dois pontos. Os dois nós ficam nas pontas e o arco sobe entre eles.

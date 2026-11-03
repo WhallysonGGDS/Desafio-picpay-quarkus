@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { API_ERROR_CODES, ApiError } from './ApiError';
-import { fieldMessage, messageFor } from './errorMessages';
+import { fieldMessage, messageFor, messageForCode } from './errorMessages';
 
 const GENERIC = 'Não foi possível concluir. Tente de novo.';
+
+describe('messageForCode', () => {
+  // Quebra se: o texto de quem só guarda o código (o fluxo de transferência guarda o código do último erro, não o
+  // erro) divergir do texto de quem tem o erro na mão: a mesma falha diria duas coisas diferentes.
+  it('dá o mesmo texto que messageFor dá ao erro com esse código', () => {
+    for (const code of API_ERROR_CODES) {
+      expect(messageForCode(code), code).toBe(messageFor(new ApiError(0, code, [])));
+    }
+  });
+
+  it('código que não é nosso (HTTP_<status>, ou qualquer texto) cai no texto genérico', () => {
+    expect(messageForCode('HTTP_415')).toBe(GENERIC);
+    expect(messageForCode('CODIGO_NOVO')).toBe(GENERIC);
+  });
+});
 
 describe('messageFor', () => {
   // Quebra se: um código novo entrar na lista sem texto próprio e cair, sem ninguém notar, no texto genérico.

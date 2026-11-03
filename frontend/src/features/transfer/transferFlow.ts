@@ -71,6 +71,18 @@ export function canGoNext(state: TransferState, balanceCents: bigint): boolean {
   }
 }
 
+/**
+ * Se enviar é permitido agora: na confirmação, com destinatário, e só quando nada foi (nem pode ter sido) enviado.
+ * `denied` é seguro (o autorizador recusou: nada foi gravado). Durante o envio, depois do sucesso e depois de um
+ * resultado desconhecido, nunca: na dúvida a primeira tentativa pode ter chegado, e o dinheiro sairia duas vezes.
+ * É a regra que a página consulta antes de chamar a rede, e a que o reducer aplica no `submit`.
+ */
+export function canSend(state: TransferState): boolean {
+  return (
+    state.step === 'confirm' && state.recipient !== null && (state.outcome === 'idle' || state.outcome === 'denied')
+  );
+}
+
 // Há (ou pode ter havido) uma transferência a caminho: só o reset tira o estado daqui.
 const FROZEN: ReadonlySet<Outcome> = new Set<Outcome>(['submitting', 'success', 'unknown']);
 
@@ -121,8 +133,6 @@ export function transferReducer(state: TransferState, action: TransferAction): T
       if (state.step === 'recipient') return state;
       return { ...settled(state), step: state.step === 'confirm' ? 'amount' : 'recipient' };
     case 'submit':
-      // Chegando aqui o desfecho é idle, denied ou rejected: em todos nada foi gravado, então enviar é seguro.
-      if (state.step !== 'confirm' || state.recipient === null) return state;
-      return { ...state, outcome: 'submitting', errorCode: undefined };
+      return canSend(state) ? { ...state, outcome: 'submitting', errorCode: undefined } : state;
   }
 }

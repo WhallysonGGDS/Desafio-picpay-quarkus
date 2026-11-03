@@ -3,6 +3,7 @@ import { ApiError, type ApiErrorCode } from '../../api/ApiError';
 import { rafael, summary, tx } from '../../test/fixtures';
 import {
   canGoNext,
+  canSend,
   classifyFailure,
   initialTransferState,
   transferReducer as reduce,
@@ -70,6 +71,28 @@ describe('canGoNext', () => {
 
   it('na confirmação não há próximo passo', () => {
     expect(canGoNext(confirmed(), BALANCE)).toBe(false);
+  });
+});
+
+describe('canSend', () => {
+  // RF2, última linha. Quebra se: enviar for permitido depois de um resultado desconhecido (a primeira tentativa pode
+  // ter chegado: o dinheiro sairia duas vezes), durante um envio (duplo clique) ou depois do sucesso.
+  it.each([
+    ['idle', true],
+    ['denied', true], // o autorizador recusou: nada foi gravado, tentar de novo é seguro
+    ['submitting', false],
+    ['success', false],
+    ['unknown', false],
+    ['rejected', false],
+  ] as const)('na confirmação, com destinatário, e desfecho %s: %s', (outcome, expected) => {
+    expect(canSend({ ...confirmed(), outcome })).toBe(expected);
+  });
+
+  // Quebra se: o envio for permitido fora da confirmação ou sem destinatário.
+  it('só na confirmação e com destinatário', () => {
+    expect(canSend(initialTransferState)).toBe(false);
+    expect(canSend(atAmount())).toBe(false);
+    expect(canSend({ ...confirmed(), recipient: null })).toBe(false);
   });
 });
 

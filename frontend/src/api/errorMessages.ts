@@ -32,10 +32,14 @@ const FIELD_MESSAGES: Record<string, string> = {
   INVALID_AMOUNT: 'Digite um valor válido, com até duas casas decimais.',
 };
 
+/** O texto de um código de erro, para quem guarda o código e não o erro. `HTTP_<status>` e códigos desconhecidos caem no genérico. */
+export function messageForCode(code: string): string {
+  return (MESSAGES as Record<string, string>)[code] ?? GENERIC;
+}
+
 /** O texto de um erro para a tela. `HTTP_<status>` e qualquer coisa que não seja ApiError caem no texto genérico. */
 export function messageFor(error: unknown): string {
-  if (!(error instanceof ApiError)) return GENERIC;
-  return (MESSAGES as Record<string, string>)[error.code] ?? GENERIC;
+  return error instanceof ApiError ? messageForCode(error.code) : GENERIC;
 }
 
 /** O texto de um erro de campo (o `code` de um item de fieldErrors). */

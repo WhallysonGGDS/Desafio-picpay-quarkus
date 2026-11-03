@@ -13,6 +13,9 @@ describe('Arc', () => {
     ['authorizing', 'Autorizando…'],
     ['landed', 'Enviado'],
     ['retracted', 'Não enviado'],
+    // Sem resposta: o arco não afirma nada (fica em repouso), mas o leitor de tela não pode ouvir "Pronto para enviar"
+    // logo depois de "não deu para confirmar": seria convidar ao reenvio que o fluxo proíbe.
+    ['unconfirmed', 'Sem confirmação'],
   ] as [ArcState, string][])('estado %s expõe data-arc-state e anuncia "%s"', (state, announcement) => {
     const { container } = render(<Arc state={state} from="Você" to="Rafael" />);
 

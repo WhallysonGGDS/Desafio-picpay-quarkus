@@ -1,0 +1,42 @@
+.confirm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-6);
+}
+
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+}
+
+/* O resumo: três linhas, um fio entre elas. Rótulo pequeno e apagado à esquerda, o dado à direita. */
+.summary {
+  display: grid;
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.line {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.line dt {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.line dd {
+  margin: 0;
+}
+
+.result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+}

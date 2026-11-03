@@ -1,8 +1,8 @@
+/* O arco ocupa a coluna que o contém: quem o usa decide a largura (a tela de confirmação, a coluna de 560 px). */
 .arc {
   display: grid;
   gap: var(--sp-2);
   width: 100%;
-  max-width: 28rem;
 }
 
 .svg {
