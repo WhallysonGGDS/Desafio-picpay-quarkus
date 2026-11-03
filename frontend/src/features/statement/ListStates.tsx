@@ -14,8 +14,9 @@ export function MovementsSkeleton({ rows = 3 }: { rows?: number }) {
   );
 }
 
-export function EmptyMovements() {
-  return <p className={styles.empty}>Nenhuma movimentação por aqui.</p>;
+/** `className` deixa quem usa ajustar o respiro (a carteira a alinha com o rótulo "Saldo", ao lado). */
+export function EmptyMovements({ className }: { className?: string }) {
+  return <p className={[styles.empty, className].filter(Boolean).join(' ')}>Nenhuma movimentação por aqui.</p>;
 }
 
 /** A consulta falhou: diz o motivo (rede e servidor têm textos diferentes) e deixa tentar de novo. */

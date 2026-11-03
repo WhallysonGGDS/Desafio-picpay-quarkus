@@ -4,7 +4,7 @@ import { collectConsoleErrors } from './support/console';
 import { scrollToScene } from './support/scroll';
 import { shot } from './support/shot';
 import { resetStub } from './support/stub';
-import { DEMO, newIdentity, signIn } from './support/users';
+import { DEMO, newIdentity, newUser, signIn } from './support/users';
 
 const PUBLIC = ['/', '/entrar', '/criar-conta'] as const;
 const PRIVATE = ['/carteira', '/transferir', '/extrato'] as const;
@@ -363,6 +363,28 @@ test('a aba tem o ícone da marca e a página tem descrição', async ({ page, r
 
   const description = await page.locator('meta[name="description"]').getAttribute('content');
   expect(description ?? '').toMatch(/transfer/i);
+});
+
+// A carteira de quem acaba de se cadastrar (é a primeira tela que cada pessoa vê): a frase do vazio nasce na altura do rótulo
+// "Saldo", e não uns 20 px abaixo, flutuando sem alinhar com nada. Mede-se o TEXTO (o retângulo das letras), não a caixa do
+// elemento: o deslocamento estava no padding de dentro da caixa, que começava na mesma altura.
+test('carteira vazia: a frase do vazio alinha com o rótulo "Saldo"', async ({ page, request }) => {
+  test.skip(test.info().project.name !== 'desktop', 'as duas colunas só existem em janela larga');
+  await signIn(page, await newUser(request));
+  await page.goto('/carteira');
+  const message = page.getByText('Nenhuma movimentação por aqui.');
+  await expect(message).toBeVisible();
+
+  const textTop = (locator: typeof message) =>
+    locator.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getBoundingClientRect().top;
+    });
+  const label = await textTop(page.getByText('Saldo', { exact: true }));
+  const phrase = await textTop(message);
+
+  expect(Math.abs(phrase - label), `o rótulo começa em y=${label} e a frase em y=${phrase}`).toBeLessThanOrEqual(4);
 });
 
 test('as fontes Geist carregam da própria origem e nada externo é requisitado', async ({ page }) => {

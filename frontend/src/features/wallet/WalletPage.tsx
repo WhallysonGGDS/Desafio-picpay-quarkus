@@ -35,7 +35,7 @@ export function WalletPage() {
       >
         {statement.isLoading && <MovementsSkeleton rows={3} />}
         {statement.error && <LoadFailure error={statement.error} onRetry={statement.retry} />}
-        {empty && <EmptyMovements />}
+        {empty && <EmptyMovements className={styles.empty} />}
         <ButtonLink to={ROUTES.statement} variant="quiet" className={styles.statement}>
           Ver extrato
         </ButtonLink>
