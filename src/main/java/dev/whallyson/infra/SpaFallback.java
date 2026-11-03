@@ -20,6 +20,10 @@ import java.util.List;
 // NotFoundException. O GlobalExceptionHandler (JSON de erro para tudo) é um, então o REST responde o 404 sozinho
 // e o handler do Quinoa nunca roda. Este filtro roda antes do REST e reescreve o pedido para "/".
 //
+// Também cuida do cache do HTML: o Quarkus serve todo arquivo estático com "public, immutable, max-age=86400", o que é certo
+// para os pacotes de nome-hash (/assets/index-<hash>.js) e errado para o index.html, que depois de um novo build apontaria,
+// por até um dia, para pacotes que já não existem. Toda resposta HTML do front sai com "no-cache" (o navegador a revalida).
+//
 // Só reescreve navegação de verdade: GET/HEAD com Accept text/html, caminho sem extensão de arquivo e fora dos
 // prefixos da API. Cliente da API que erra a URL continua recebendo o JSON de erro, e arquivo ausente continua 404.
 // Em dev a raiz é o proxy do Quinoa para o Vite, que devolve o index.html (com o cliente de recarga ao vivo); sem este
@@ -43,6 +47,9 @@ public class SpaFallback {
     }
 
     private void handle(RoutingContext routing) {
+        if (isNotApiRead(routing)) {
+            routing.addHeadersEndHandler(done -> revalidateHtml(routing));
+        }
         if (isNavigationToClientRoute(routing)) {
             routing.reroute("/");
         } else {
@@ -50,13 +57,26 @@ public class SpaFallback {
         }
     }
 
-    private boolean isNavigationToClientRoute(RoutingContext routing) {
+    // Leitura de algo que não é da API: o front (HTML, pacotes) e, em dev, o que o Quinoa encaminha ao Vite.
+    private boolean isNotApiRead(RoutingContext routing) {
         HttpMethod method = routing.request().method();
-        if (!HttpMethod.GET.equals(method) && !HttpMethod.HEAD.equals(method)) {
+        return (HttpMethod.GET.equals(method) || HttpMethod.HEAD.equals(method)) && !isApi(routing.normalizedPath());
+    }
+
+    // Roda antes de os cabeçalhos saírem, e por isso vale sobre o que o tratador de estáticos pôs: só o HTML muda.
+    private static void revalidateHtml(RoutingContext routing) {
+        String type = routing.response().headers().get(HttpHeaders.CONTENT_TYPE);
+        if (type != null && type.startsWith("text/html")) {
+            routing.response().putHeader(HttpHeaders.CACHE_CONTROL, "no-cache");
+        }
+    }
+
+    private boolean isNavigationToClientRoute(RoutingContext routing) {
+        if (!isNotApiRead(routing)) {
             return false;
         }
         String path = routing.normalizedPath();
-        if ("/".equals(path) || hasFileExtension(path) || isApi(path)) {
+        if ("/".equals(path) || hasFileExtension(path)) {
             return false;
         }
         String accept = routing.request().getHeader(HttpHeaders.ACCEPT);

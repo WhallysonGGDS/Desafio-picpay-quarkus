@@ -89,7 +89,7 @@
             <artifactId>quarkus-elytron-security-common</artifactId>
         </dependency>
         <!-- Constrói o front (frontend/) no Maven e o serve na mesma origem da API, com fallback das rotas do SPA.
-             Para compilar só o back-end: -Dquarkus.quinoa.enabled=false -->
+             Para compilar só o back-end: -Dquarkus.quinoa=false (a chave é a própria quarkus.quinoa) -->
         <dependency>
             <groupId>io.quarkiverse.quinoa</groupId>
             <artifactId>quarkus-quinoa</artifactId>

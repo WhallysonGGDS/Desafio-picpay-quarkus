@@ -1,13 +1,19 @@
 package dev.whallyson;
 
 import io.quarkus.test.junit.QuarkusIntegrationTest;
+import io.restassured.RestAssured;
+import io.restassured.config.DecoderConfig;
+import io.restassured.specification.RequestSpecification;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
 // Roda contra o jar empacotado, em perfil de produção: é onde o Quinoa serve o front na mesma origem da API.
@@ -67,5 +73,51 @@ class SpaServingIT {
         given().accept(BROWSER).get("/hello").then().statusCode(200).body(is("Hello from Quarkus REST"));
         given().accept(BROWSER).get("/q/openapi?format=json").then().statusCode(200).body("openapi", notNullValue());
         given().accept(BROWSER).get("/users/me").then().statusCode(401).body("code", is("UNAUTHENTICATED"));
+    }
+
+    // O pacote que o index.html carrega ("/assets/index-<hash>.js") e a folha de estilo dele: é o que o navegador baixa primeiro.
+    private static String asset(String extension) {
+        String html = given().accept(BROWSER).get("/").asString();
+        Matcher matcher = Pattern.compile("/assets/index-[^\"]+\\." + extension).matcher(html);
+        if (!matcher.find()) {
+            throw new AssertionError("o index.html não carrega um /assets/index-*." + extension + ":\n" + html);
+        }
+        return matcher.group();
+    }
+
+    // Sem os decodificadores o cliente não descomprime sozinho nem apaga o Content-Encoding da resposta: o que se confere é o que
+    // o servidor mandou.
+    private static RequestSpecification acceptingGzip() {
+        return given().config(RestAssured.config().decoderConfig(DecoderConfig.decoderConfig().noContentDecoders()))
+                .header("Accept-Encoding", "gzip");
+    }
+
+    // Quebra se: o servidor não comprimir o que o navegador aceita comprimido. O orçamento do bundle (170 kB) é medido em gzip:
+    // sem compressão a entrada de uns 127 kB baixaria com uns 400 kB.
+    @Test
+    void compressesScriptsStylesAndHtmlForBrowsersThatAcceptGzip() {
+        acceptingGzip().get(asset("js")).then().statusCode(200).header("Content-Encoding", "gzip");
+        acceptingGzip().get(asset("css")).then().statusCode(200).header("Content-Encoding", "gzip");
+        acceptingGzip().accept(BROWSER).get("/").then().statusCode(200).header("Content-Encoding", "gzip");
+    }
+
+    // Quebra se: a compressão passar a valer para quem não pediu (um cliente sem Accept-Encoding receberia bytes que não sabe ler).
+    @Test
+    void sendsPlainBytesToClientsThatDidNotAskForGzip() {
+        given().config(RestAssured.config().decoderConfig(DecoderConfig.decoderConfig().noContentDecoders()))
+                .get(asset("js")).then().statusCode(200).header("Content-Encoding", is((String) null));
+    }
+
+    // Quebra se: o index.html for servido com cache longo (e "immutable"): depois de um novo build ele apontaria, por até um dia,
+    // para pacotes de nome-hash que já não existem. Já os pacotes de nome-hash podem (e devem) ficar em cache.
+    @Test
+    void indexHtmlIsRevalidatedButHashedAssetsAreCachedForLong() {
+        for (String path : List.of("/", "/carteira", "/entrar")) {
+            given().accept(BROWSER).get(path).then().statusCode(200)
+                    .header("Cache-Control", is("no-cache"));
+        }
+        given().get(asset("js")).then().statusCode(200)
+                .header("Cache-Control", containsString("immutable"))
+                .header("Cache-Control", not(containsString("no-cache")));
     }
 }
