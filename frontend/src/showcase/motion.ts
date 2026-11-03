@@ -1,11 +1,27 @@
 /** O aviso que o motor dá, na própria cena, quando o progresso dela muda: é como o texto que depende do scroll (o saldo) o recebe. */
 export const SCENE_PROGRESS_EVENT = 'sceneprogress';
 
+export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+/**
+ * Janela estreita e baixa (o celular deitado): as cenas fixadas supõem uma janela em que o palco inteiro cabe, e aqui o texto
+ * de uma passaria por cima do de outra. O motor não as prende (elas ficam em fluxo, no estado final) e o CSS tira a altura
+ * fixa. O mesmo texto está no `@media` de showcase.module.css; um teste confere que os dois são iguais.
+ */
+export const COMPACT_WINDOW_QUERY = '(max-width: 62rem) and (max-height: 36rem)';
+
+function matches(query: string): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false;
+}
+
 /** A pessoa pediu menos movimento (prefers-reduced-motion: reduce). Sem matchMedia (jsdom, navegador antigo), não pediu. */
 export function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    : false;
+  return matches(REDUCED_MOTION_QUERY);
+}
+
+/** A janela é estreita e baixa demais para as cenas fixadas (veja COMPACT_WINDOW_QUERY). */
+export function isCompactWindow(): boolean {
+  return matches(COMPACT_WINDOW_QUERY);
 }
 
 /** Corta o valor entre 0 e 1. NaN vira 0: um progresso sem sentido não pode chegar ao CSS, que o descartaria em silêncio. */

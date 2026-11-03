@@ -79,3 +79,13 @@
   top: 0.1rem;
   text-align: right;
 }
+
+/* Janela estreita e baixa (celular deitado): a cena não prende (veja showcase.module.css). O palco vira uma coluna estreita e
+   alta, a proporção em que o arco fica vertical, com o texto de cada decisão à direita do nó, e a altura de que as quatro
+   precisam. */
+@media (max-width: 62rem) and (max-height: 36rem) {
+  .stage {
+    width: min(100%, 28rem);
+    min-height: 36rem;
+  }
+}

@@ -3,7 +3,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { StrictMode, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SCENE_PROGRESS_EVENT } from './motion';
+import { COMPACT_WINDOW_QUERY, REDUCED_MOTION_QUERY, SCENE_PROGRESS_EVENT } from './motion';
 import { Scene, useSceneProgress, type SceneId } from './Scene';
 import { useScrollScenes } from './useScrollScenes';
 
@@ -34,24 +34,33 @@ vi.mock('lenis', () => ({
   },
 }));
 
-/** Controla `prefers-reduced-motion` e avisa quem escuta quando ele muda, como o navegador faz. */
-function motionPreference(initiallyReduced: boolean) {
-  let reduced = initiallyReduced;
-  const listeners = new Set<() => void>();
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    get matches() {
-      return query.includes('reduce') ? reduced : !reduced;
-    },
-    media: query,
-    addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
-    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
-  }));
+/**
+ * Controla `prefers-reduced-motion` e a janela compacta e avisa quem escuta quando mudam, como o navegador faz. Cada consulta
+ * responde só por si: qualquer outra não casa.
+ */
+function media(initial: { reduced?: boolean; compact?: boolean } = {}) {
+  const state = { reduced: initial.reduced ?? false, compact: initial.compact ?? false };
+  const listeners = { reduced: new Set<() => void>(), compact: new Set<() => void>() };
+  const kindOf = (query: string) => (query === REDUCED_MOTION_QUERY ? 'reduced' : query === COMPACT_WINDOW_QUERY ? 'compact' : null);
+  vi.stubGlobal('matchMedia', (query: string) => {
+    const kind = kindOf(query);
+    return {
+      get matches() {
+        return kind ? state[kind] : false;
+      },
+      media: query,
+      addEventListener: (_type: string, listener: () => void) => kind && listeners[kind].add(listener),
+      removeEventListener: (_type: string, listener: () => void) => kind && listeners[kind].delete(listener),
+    };
+  });
+  const change = (kind: 'reduced' | 'compact', next: boolean) => {
+    state[kind] = next;
+    listeners[kind].forEach((listener) => listener());
+  };
   return {
-    set(next: boolean) {
-      reduced = next;
-      listeners.forEach((listener) => listener());
-    },
-    listenerCount: () => listeners.size,
+    set: (next: boolean) => change('reduced', next),
+    setCompact: (next: boolean) => change('compact', next),
+    listenerCount: () => listeners.reduced.size + listeners.compact.size,
   };
 }
 
@@ -95,7 +104,7 @@ describe('useScrollScenes', () => {
   // RF5. Quebra se: com movimento reduzido a vitrine criar o Lenis ou os pins (a rolagem suave e as cenas presas são
   // exatamente o que essa pessoa pediu para não ter), ou deixar o conteúdo que depende de --p escondido.
   it('com movimento reduzido: todas as cenas em 1.000, sem Lenis, sem pins, sem ScrollTrigger', () => {
-    motionPreference(true);
+    media({ reduced: true });
 
     const { container } = render(<Harness />);
 
@@ -106,10 +115,56 @@ describe('useScrollScenes', () => {
     expect(ScrollTrigger.getAll()).toHaveLength(0);
   });
 
+  // Quebra se: numa janela estreita e baixa (celular deitado) as cenas fixadas continuarem presas: o palco delas não cabe na altura
+  // da janela e o texto de uma passa por cima do de outra. Ficam em fluxo, já no estado final; o resto segue o scroll.
+  it('janela compacta: as cenas fixadas não prendem e ficam em 1.000; as outras seguem o scroll', () => {
+    media({ compact: true });
+
+    const { container } = render(<Harness />);
+
+    expect(container.querySelectorAll('.pin-spacer')).toHaveLength(0);
+    const [, two, three] = progresses(container); // as outras cenas ficam com o ScrollTrigger (no jsdom, sem layout, ele as dá por completas)
+    expect([two, three]).toEqual(['1.000', '1.000']);
+    expect(ScrollTrigger.getAll()).toHaveLength(4);
+    expect(created).toHaveLength(1); // a rolagem suave continua: só as cenas fixadas mudam
+    expect(screen.getByTestId('probe')).toHaveTextContent('1'); // o saldo da cena 3 já mostra o fim
+  });
+
+  // Quebra se: girar o celular com a página aberta não refizer a vitrine (ficaria com pins numa janela baixa, ou sem eles numa alta).
+  it('a janela vira compacta ao vivo: desfaz os pins; voltar a recria', () => {
+    const preference = media();
+    const { container } = render(<Harness />);
+    expect(container.querySelectorAll('.pin-spacer')).toHaveLength(2);
+
+    act(() => preference.setCompact(true));
+
+    expect(container.querySelectorAll('.pin-spacer')).toHaveLength(0);
+    expect(ScrollTrigger.getAll()).toHaveLength(4);
+    expect(progresses(container)[1]).toBe('1.000');
+    expect(created[0]?.destroy).toHaveBeenCalledTimes(1);
+
+    act(() => preference.setCompact(false));
+
+    expect(container.querySelectorAll('.pin-spacer')).toHaveLength(2);
+    expect(ScrollTrigger.getAll()).toHaveLength(6);
+    expect(progresses(container)[1]).toBe('0.000');
+  });
+
+  // Quebra se: movimento reduzido deixar de vencer a janela compacta (nenhum Lenis, nenhum trigger, tudo no fim).
+  it('movimento reduzido vale também em janela compacta: tudo em 1.000, sem Lenis nem triggers', () => {
+    media({ reduced: true, compact: true });
+
+    const { container } = render(<Harness />);
+
+    expect(progresses(container)).toEqual(Array(6).fill('1.000'));
+    expect(created).toHaveLength(0);
+    expect(ScrollTrigger.getAll()).toHaveLength(0);
+  });
+
   // Quebra se: o Lenis nascer com outra suavidade, não avisar o ScrollTrigger quando a página anda (os pins e o progresso
   // ficariam parados) ou fixar uma cena que não é fixada (ou deixar de fixar a que é).
   it('com movimento: cria o Lenis (lerp 0,1), liga ao ScrollTrigger e fixa só as cenas 2 e 3', () => {
-    motionPreference(false);
+    media();
 
     const { container } = render(<Harness />);
 
@@ -124,7 +179,7 @@ describe('useScrollScenes', () => {
   // Quebra se: o relógio do GSAP não alimentar o Lenis (a rolagem suave pararia no primeiro quadro) ou o fizer na unidade
   // errada: o ticker do GSAP conta em segundos e o Lenis em milissegundos.
   it('o ticker do GSAP alimenta o Lenis, em milissegundos', () => {
-    motionPreference(false);
+    media();
     const add = vi.spyOn(gsap.ticker, 'add');
 
     render(<Harness />);
@@ -137,7 +192,7 @@ describe('useScrollScenes', () => {
   // Quebra se: o motor não escrever o progresso (atributo e variável CSS) ou não avisar a cena (o saldo da cena 3 é texto
   // e só anda se alguém o avisar), ou avisar a cada quadro mesmo sem mudança (um render do React por quadro, à toa).
   it('escreve o progresso na cena e avisa quem escuta, só quando ele muda', () => {
-    motionPreference(false);
+    media();
     const { container } = render(<Harness />);
     const scene = container.querySelector('[data-scene="3"]') as HTMLElement;
     const trigger = ScrollTrigger.getAll()[2] as ScrollTrigger;
@@ -164,7 +219,7 @@ describe('useScrollScenes', () => {
   // Quebra se: com movimento reduzido o texto que depende do scroll ficar no estado de antes (o saldo mostraria R$ 1.000,00
   // para quem não pode ver a animação que o levaria a R$ 750,00).
   it('com movimento reduzido, quem escuta já recebe o progresso final', () => {
-    motionPreference(true);
+    media({ reduced: true });
 
     render(<Harness />);
 
@@ -174,12 +229,12 @@ describe('useScrollScenes', () => {
   // Quebra se: sair da vitrine deixar o Lenis escutando a roda, ScrollTriggers órfãos ou pins no DOM: a carteira herdaria a
   // rolagem suave e triggers apontando para elementos que já não existem.
   it('ao desmontar desfaz tudo: Lenis destruído, nenhum ScrollTrigger vivo, nenhum pin', () => {
-    const preference = motionPreference(false);
+    const preference = media();
     const add = vi.spyOn(gsap.ticker, 'add');
     const remove = vi.spyOn(gsap.ticker, 'remove');
     const lagSmoothing = vi.spyOn(gsap.ticker, 'lagSmoothing');
     const { unmount } = render(<Harness />);
-    expect(preference.listenerCount()).toBe(1);
+    expect(preference.listenerCount()).toBe(2); // movimento reduzido e janela compacta
     expect(lagSmoothing).toHaveBeenCalledWith(0); // sem isso o GSAP "perdoa" quadros lentos e o scroll e o arco se descolam
     const tick = add.mock.calls[0]?.[0];
     // O próprio ticker.add chama ticker.remove(callback) por dentro (para não duplicar): só vale a remoção DEPOIS de sair.
@@ -198,7 +253,7 @@ describe('useScrollScenes', () => {
 
   // Quebra se: o StrictMode do desenvolvimento (montar, desmontar, montar) deixar dois conjuntos de triggers e dois Lenis vivos.
   it('em StrictMode não duplica: seis triggers e um Lenis vivo', () => {
-    motionPreference(false);
+    media();
 
     render(
       <StrictMode>
@@ -213,7 +268,7 @@ describe('useScrollScenes', () => {
   // Quebra se: a vitrine só olhar a preferência na montagem: quem liga "reduzir movimento" no sistema com a página aberta
   // continuaria com pins e rolagem suave.
   it('a preferência muda ao vivo: reduzir desfaz o Lenis e os pins; voltar recria', () => {
-    const preference = motionPreference(false);
+    const preference = media();
     const { container } = render(<Harness />);
     expect(container.querySelectorAll('.pin-spacer')).toHaveLength(2);
 
@@ -234,7 +289,7 @@ describe('useScrollScenes', () => {
   // Quebra se: os triggers não forem recalculados quando as fontes chegam (o texto muda de altura e as cenas fixadas
   // começam e terminam no lugar errado), ou se refizerem depois de a vitrine ter saído.
   it('recalcula os triggers quando as fontes terminam de carregar, e só se a vitrine ainda está lá', async () => {
-    motionPreference(false);
+    media();
     let loaded!: () => void;
     (document as { fonts?: unknown }).fonts = {
       ready: new Promise<void>((resolve) => {

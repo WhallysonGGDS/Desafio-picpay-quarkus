@@ -3,7 +3,14 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
 import 'lenis/dist/lenis.css';
 import { useEffect, type RefObject } from 'react';
-import { formatProgress, prefersReducedMotion, SCENE_PROGRESS_EVENT } from './motion';
+import {
+  COMPACT_WINDOW_QUERY,
+  formatProgress,
+  isCompactWindow,
+  prefersReducedMotion,
+  REDUCED_MOTION_QUERY,
+  SCENE_PROGRESS_EVENT,
+} from './motion';
 
 // Quantas alturas de janela de rolagem uma cena fixada consome enquanto o progresso dela vai de 0 a 1.
 const PIN_DISTANCE = 1.5;
@@ -21,7 +28,8 @@ function write(scene: HTMLElement, progress: number): void {
 /**
  * Liga o motor às cenas de `root`: devolve o que o desfaz. Com movimento reduzido nada anda: sem Lenis, sem pins, e o
  * progresso fica em 1 (o CSS desenha tudo no estado final e o texto fica todo legível). Sem isso, um Lenis que suaviza a
- * roda e o ScrollTrigger, que escreve o progresso de cada cena e prende as fixadas.
+ * roda e o ScrollTrigger, que escreve o progresso de cada cena e prende as fixadas. Numa janela compacta (celular deitado)
+ * só as cenas fixadas ficam sem pin: em fluxo e no estado final, como no movimento reduzido; o resto da vitrine segue.
  */
 function start(root: HTMLElement): () => void {
   const scenes = Array.from(root.querySelectorAll<HTMLElement>('[data-scene]'));
@@ -31,6 +39,7 @@ function start(root: HTMLElement): () => void {
     return () => undefined;
   }
 
+  const compact = isCompactWindow();
   gsap.registerPlugin(ScrollTrigger);
   const lenis = new Lenis({ lerp: 0.1 });
   const tick = (time: number) => lenis.raf(time * 1000);
@@ -43,6 +52,10 @@ function start(root: HTMLElement): () => void {
   const context = gsap.context(() => {
     scenes.forEach((scene) => {
       const pinned = scene.hasAttribute('data-pinned');
+      if (pinned && compact) {
+        write(scene, 1);
+        return;
+      }
       const hero = scene.dataset['scene'] === HERO;
       ScrollTrigger.create({
         trigger: scene,
@@ -74,8 +87,9 @@ function start(root: HTMLElement): () => void {
 }
 
 /**
- * O motor da vitrine: rolagem suave (Lenis), progresso e pins por cena (ScrollTrigger), tudo desfeito ao sair. Reage à
- * preferência de movimento do sistema ao vivo: ligar "reduzir movimento" com a página aberta tira o Lenis e os pins na hora.
+ * O motor da vitrine: rolagem suave (Lenis), progresso e pins por cena (ScrollTrigger), tudo desfeito ao sair. Reage ao vivo à
+ * preferência de movimento do sistema (ligar "reduzir movimento" com a página aberta tira o Lenis e os pins na hora) e ao
+ * tamanho da janela (girar o celular liga ou desliga os pins).
  */
 export function useScrollScenes(root: RefObject<HTMLElement | null>): void {
   useEffect(() => {
@@ -83,15 +97,15 @@ export function useScrollScenes(root: RefObject<HTMLElement | null>): void {
     if (!element) return;
 
     let stop = start(element);
-    const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const queries = [REDUCED_MOTION_QUERY, COMPACT_WINDOW_QUERY].map((query) => window.matchMedia(query));
     const onChange = () => {
       stop();
       stop = start(element);
     };
-    preference.addEventListener('change', onChange);
+    queries.forEach((query) => query.addEventListener('change', onChange));
 
     return () => {
-      preference.removeEventListener('change', onChange);
+      queries.forEach((query) => query.removeEventListener('change', onChange));
       stop();
     };
   }, [root]);

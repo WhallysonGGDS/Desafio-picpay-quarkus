@@ -24,6 +24,16 @@
   overflow: hidden;
 }
 
+/* Janela estreita e baixa (celular deitado): o palco de uma cena fixada não cabe numa janela assim, e o texto de uma passava
+   por cima do de outra. O motor não prende a cena (COMPACT_WINDOW_QUERY, em motion.ts: o texto da consulta é o mesmo, e um
+   teste confere): ela vira uma cena comum, em fluxo, com a altura do que tem dentro. */
+@media (max-width: 62rem) and (max-height: 36rem) {
+  .scene[data-pinned] {
+    height: auto;
+    overflow: visible;
+  }
+}
+
 /* O arco ocupa a caixa que a cena lhe dá; dentro dela, os dois caminhos e os nós ficam sobrepostos. Ele se desenha por
    `--arc-p`: o `--arc` que a cena escreve (para o arco fechar antes de a cena soltar, ou só quando a cena já está na janela)
    ou, na falta dele, o `--p` da cena. A cena não pode redefinir `--p` a partir de si mesma (seria um ciclo): por isso o alias. */

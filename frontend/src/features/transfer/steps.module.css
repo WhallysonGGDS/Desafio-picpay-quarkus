@@ -8,6 +8,16 @@
   margin-top: var(--sp-6);
 }
 
+/* O botão principal nunca passa da largura da tela: o rótulo dele leva o nome de quem recebe ("Enviar R$ 50,00 para Maria
+   Fernanda de Albuquerque") e, onde não cabe numa linha, quebra em duas. Em 320 px ele tinha 362 px e a página rolava de lado. */
+.actions > :first-child {
+  max-width: 100%;
+  padding-block: var(--sp-3);
+  line-height: 1.25;
+  text-align: left;
+  white-space: normal;
+}
+
 /* O botão discreto tem um respiro interno de 4 px: recua para o texto alinhar com a coluna. */
 .actions > :last-child:not(:first-child) {
   margin-left: calc(var(--sp-1) * -1);
