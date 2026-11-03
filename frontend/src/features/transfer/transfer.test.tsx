@@ -11,9 +11,10 @@ import { createQueryClient } from '../../app/providers';
 import { routes } from '../../app/router';
 import { sessionKey } from '../../app/session';
 import { errorResponse, mockSession } from '../../test/api';
-import { loja, marina, rafael, summary, tx } from '../../test/fixtures';
+import { loja, marina, page, rafael, summary, tx } from '../../test/fixtures';
 import { currentUrl, renderApp, renderRoutes } from '../../test/render';
 import { server } from '../../test/server';
+import { statementKey } from '../statement/useStatement';
 
 type Typist = ReturnType<typeof userEvent.setup>;
 
@@ -697,6 +698,39 @@ describe('envio', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Sem confirmação.' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /tentar de novo|enviar/i })).toBeNull();
+  });
+
+  // RF2. Quebra se: depois de "não deu para confirmar" o saldo e o extrato ficarem como estavam. O envio PODE ter chegado, e
+  // quem abrisse a carteira veria o saldo de antes (a consulta da sessão vale 30 s), concluiria que o dinheiro não saiu e
+  // enviaria de novo.
+  it('resultado desconhecido: o saldo e o extrato são buscados de novo, porque o envio pode ter chegado', async () => {
+    let balance = '1000.00';
+    let sessionCalls = 0;
+    api();
+    server.use(
+      http.get('*/users/me', () => {
+        sessionCalls += 1;
+        return HttpResponse.json({ ...marina, balance });
+      }),
+      http.post('*/transaction', () => {
+        balance = '750.00'; // o envio chegou ao servidor, mas a resposta se perdeu
+        return HttpResponse.error();
+      }),
+    );
+    const { queryClient } = renderRoutes('/transferir');
+    const user = typist();
+    await screen.findByLabelText(SEARCH);
+    await reachConfirmation(user);
+    const guarded = [...statementKey, 'all', 5]; // o que a carteira guardou do extrato (a chave é a de useStatement)
+    queryClient.setQueryData(guarded, page([tx()]));
+    const before = sessionCalls;
+
+    await user.click(send());
+    await screen.findByRole('heading', { level: 1, name: 'Sem confirmação.' });
+
+    await waitFor(() => expect(sessionCalls).toBeGreaterThan(before));
+    await waitFor(() => expect(queryClient.getQueryData(sessionKey)).toMatchObject({ balance: '750.00' }));
+    expect(queryClient.getQueryState(guarded)?.isInvalidated).toBe(true);
   });
 
   // Quebra se: "Nova transferência" não limpar tudo (o valor e o destinatário da anterior voltariam).

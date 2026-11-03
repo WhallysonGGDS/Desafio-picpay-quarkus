@@ -5,6 +5,7 @@ import { api } from '../../api/client';
 import { messageForCode } from '../../api/errorMessages';
 import type { Transaction, TransferBody } from '../../api/types';
 import { sessionKey, useSession } from '../../app/session';
+import { useDocumentTitle } from '../../app/useDocumentTitle';
 import { ButtonLink } from '../../design/Button';
 import { apiToCents, centsToApi, parseAmountInput } from '../../lib/money';
 import { ROUTES } from '../../routes';
@@ -12,7 +13,7 @@ import { statementKey } from '../statement/useStatement';
 import { AmountStep } from './AmountStep';
 import { ConfirmStep } from './ConfirmStep';
 import { RecipientStep } from './RecipientStep';
-import { canSend, initialTransferState, transferReducer, type Step, type TransferState } from './transferFlow';
+import { canSend, classifyFailure, initialTransferState, transferReducer, type Step, type TransferState } from './transferFlow';
 import styles from './TransferPage.module.css';
 
 const ORDER: Record<Step, number> = { recipient: 0, amount: 1, confirm: 2 };
@@ -36,6 +37,7 @@ function viewOf(state: TransferState): View {
 }
 
 export function TransferPage() {
+  useDocumentTitle('Transferir');
   const { user } = useSession();
   if (!user) return null;
   if (user.userType === 'MERCHANT') return <MerchantNotice />;
@@ -85,6 +87,11 @@ function TransferFlow({ balance }: { balance: string }) {
       if (error.code === 'INSUFFICIENT_BALANCE') {
         // O saldo que a tela conhece está velho. Buscar o de verdade, senão a pessoa insiste num valor que não cabe.
         void queryClient.invalidateQueries({ queryKey: sessionKey });
+      } else if (classifyFailure(error) === 'unknown') {
+        // Não se sabe se o envio chegou. Saldo e extrato têm de ser buscados de novo: senão a carteira mostraria o saldo de
+        // antes (a consulta da sessão vale 30 s) e a pessoa concluiria que o dinheiro não saiu e enviaria de novo.
+        void queryClient.invalidateQueries({ queryKey: sessionKey });
+        void queryClient.invalidateQueries({ queryKey: statementKey });
       }
     },
   });
