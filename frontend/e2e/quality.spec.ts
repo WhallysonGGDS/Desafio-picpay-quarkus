@@ -431,3 +431,121 @@ test('as fontes Geist carregam da própria origem e nada externo é requisitado'
   expect(loaded('Geist Mono Variable'), JSON.stringify(faces)).toBe(true);
   expect([...origins]).toEqual(['http://localhost:8080']);
 });
+
+// Política de segurança do conteúdo (CSP). Em produção o servidor a manda (o SpaServingIT confere o texto dos cabeçalhos, no jar);
+// aqui se prova, no navegador, as duas pontas: que ela é aplicada (o que ela proíbe de fato não roda) e que o app inteiro cabe
+// nela (nenhuma tela provoca violação). Só a primeira ponta aprovaria uma política que não protege nada; só a segunda, um
+// cabeçalho que ninguém mais confere.
+type WatchedWindow = Window & { __violations: string[]; __ran?: boolean };
+
+/** Guarda, dentro da página e antes de qualquer script dela, cada violação que o navegador reportar no documento atual. */
+async function watchViolations(page: Page): Promise<() => Promise<string[]>> {
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as WatchedWindow).__violations = seen;
+    document.addEventListener('securitypolicyviolation', (event) => {
+      seen.push(`${event.violatedDirective} barrou ${event.blockedURI || 'código embutido'}`);
+    });
+  });
+  // Lê e esvazia: cada leitura devolve só o que aconteceu desde a anterior.
+  return () => page.evaluate(() => (window as unknown as WatchedWindow).__violations.splice(0));
+}
+
+test.describe('política de segurança do conteúdo (CSP)', () => {
+  test('a política é aplicada: script embutido, eval, estilo embutido e conexão a outra origem são barrados', async ({ page }) => {
+    const violations = await watchViolations(page);
+    await page.goto('/entrar');
+    await settled(page);
+
+    const outcome = await page.evaluate(async () => {
+      const script = document.createElement('script');
+      script.textContent = 'window.__ran = true';
+      document.head.append(script);
+
+      // O eval roda num cronômetro, e não aqui: o que o `page.evaluate` executa, o inspetor do navegador libera do eval.
+      const evalOutcome = new Promise<string>((resolve) =>
+        setTimeout(() => {
+          try {
+            new Function('return 1')();
+            resolve('não barrou');
+          } catch (error) {
+            resolve((error as Error).name);
+          }
+        }, 0),
+      );
+
+      const probe = document.createElement('p');
+      probe.textContent = 'sonda';
+      probe.setAttribute('style', 'color: rgb(255, 0, 0)');
+      document.body.append(probe);
+      const styled = getComputedStyle(probe).color === 'rgb(255, 0, 0)';
+
+      // O resultado do fetch não prova nada (o nome não resolve com ou sem política): quem prova é a violação reportada.
+      await fetch('https://exemplo.invalid/', { mode: 'no-cors' }).catch(() => undefined);
+      return { scriptRan: Boolean((window as unknown as WatchedWindow).__ran), evalError: await evalOutcome, styled };
+    });
+
+    expect(outcome).toEqual({ scriptRan: false, evalError: 'EvalError', styled: false });
+    const directives = (await violations()).map((violation) => violation.split(' ')[0]);
+    expect(new Set(directives)).toEqual(new Set(['script-src-elem', 'script-src', 'style-src-attr', 'connect-src']));
+  });
+
+  // Clickjacking: a tela de envio tem um botão que move dinheiro. Nem a própria origem pode enquadrá-la.
+  test('ninguém enquadra o app, nem a própria origem', async ({ page }) => {
+    await page.goto('/entrar');
+    await settled(page);
+    const framed = await page.evaluate(
+      () =>
+        new Promise<boolean>((resolve) => {
+          const frame = document.createElement('iframe');
+          frame.src = '/entrar';
+          // Um quadro bloqueado carrega uma página de erro de outra origem: o documento dele não é legível.
+          frame.addEventListener('load', () => resolve(frame.contentDocument !== null));
+          document.body.append(frame);
+        }),
+    );
+    expect(framed).toBe(false);
+  });
+
+  test('o app inteiro roda sob a política, sem nenhuma violação', async ({ page, request }) => {
+    test.setTimeout(90_000);
+    await resetStub();
+    const user = await newUser(request);
+    const violations = await watchViolations(page);
+    const found: string[] = [];
+    const check = async (where: string) => {
+      for (const violation of await violations()) found.push(`${where}: ${violation}`);
+    };
+
+    // A vitrine, do topo ao fim: é onde o GSAP, o Lenis e o ScrollTrigger mexem nos estilos.
+    await page.goto('/');
+    await expect(page.locator('[data-scene]')).toHaveCount(6);
+    for (let step = 0; step < 12; step += 1) {
+      await page.mouse.wheel(0, 700);
+      await page.waitForTimeout(60);
+    }
+    await check('vitrine');
+
+    for (const route of ['/entrar', '/criar-conta']) {
+      await page.goto(route);
+      await settled(page);
+      await check(route);
+    }
+
+    await signIn(page, user);
+    for (const route of ['/carteira', '/extrato']) {
+      await page.goto(route);
+      await expect(page.getByRole('heading').first()).toBeVisible();
+      await settled(page);
+      await check(route);
+    }
+
+    await walkTransfer(page, (step) => check(`/transferir, passo ${step}`));
+    await page.getByRole('button', { name: /^Enviar R\$ 50,00 para Rafael Costa/ }).click();
+    await expect(page.getByRole('heading', { name: 'Enviado.' })).toBeVisible();
+    await settled(page);
+    await check('/transferir, enviado');
+
+    expect(found).toEqual([]);
+  });
+});

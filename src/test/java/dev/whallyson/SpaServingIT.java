@@ -6,11 +6,15 @@ import io.restassured.config.DecoderConfig;
 import io.restassured.specification.RequestSpecification;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static io.restassured.RestAssured.given;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
@@ -119,5 +123,48 @@ class SpaServingIT {
         given().get(asset("js")).then().statusCode(200)
                 .header("Cache-Control", containsString("immutable"))
                 .header("Cache-Control", not(containsString("no-cache")));
+    }
+
+    // Quebra se: algum tipo de resposta (página, pacote ou API) sair sem os cabeçalhos básicos de segurança: o navegador voltaria
+    // a adivinhar o tipo do conteúdo (nosniff), a mandar a URL inteira como origem de quem sai do app e a deixar outro site
+    // enquadrar o app (clickjacking).
+    @Test
+    void sendsTheBasicSecurityHeadersOnPagesAssetsAndTheApi() {
+        for (String path : List.of("/", "/carteira", "/hello", "/users/me", asset("js"), asset("css"))) {
+            given().accept(BROWSER).get(path).then()
+                    .header("X-Content-Type-Options", is("nosniff"))
+                    .header("Referrer-Policy", is("strict-origin-when-cross-origin"))
+                    .header("X-Frame-Options", is("DENY"));
+        }
+    }
+
+    // Quebra se: a política do front afrouxar: nada de fora da própria origem (nem imagem ou fonte `data:`), nenhum script ou estilo
+    // embutido ou gerado (o que um XSS precisaria), nenhum objeto, ninguém enquadra o app e nenhum formulário envia para fora.
+    // O front não carrega nada de terceiros nem injeta HTML, então a política mais estrita que serve é a certa. Confere a política
+    // inteira, diretiva por diretiva: afrouxar uma, ou acrescentar uma fonte, tem de ser uma decisão tomada aqui, de propósito.
+    @Test
+    void contentSecurityPolicyConfinesTheAppToItsOwnOrigin() {
+        String policy = given().accept(BROWSER).get("/").then().statusCode(200).extract().header("Content-Security-Policy");
+        assertNotNull(policy, "a página precisa de Content-Security-Policy");
+
+        Map<String, String> directives = new HashMap<>();
+        for (String part : policy.split(";")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                int space = trimmed.indexOf(' ');
+                directives.put(space < 0 ? trimmed : trimmed.substring(0, space), space < 0 ? "" : trimmed.substring(space + 1));
+            }
+        }
+        assertEquals(Map.of(
+                "default-src", "'self'",
+                "script-src", "'self'",
+                "style-src", "'self'",
+                "img-src", "'self'",
+                "font-src", "'self'",
+                "connect-src", "'self'",
+                "object-src", "'none'",
+                "base-uri", "'self'",
+                "form-action", "'self'",
+                "frame-ancestors", "'none'"), directives, "a política de conteúdo mudou: " + policy);
     }
 }

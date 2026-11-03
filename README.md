@@ -292,6 +292,7 @@ Tudo isto é conferido por testes automáticos (veja [Testes do front-end](#test
 - **Largura:** nenhuma tela rola na horizontal a 320 px, e nenhum texto da vitrine fica cortado nem por cima de outro em janelas de 320×568 a 1440×900.
 - **Tamanho e cache:** o pacote de entrada tem cerca de **127 kB** em gzip (orçamento: 170 kB) e o da vitrine, cerca de **55 kB** (orçamento: 70 kB); o GSAP não entra no de entrada. O servidor comprime (gzip) o HTML, os pacotes e o JSON, serve os pacotes de nome-hash com cache longo (`immutable`) e o `index.html` com `no-cache`, para um novo build chegar na hora. Nenhuma requisição sai da própria origem.
 - **Títulos:** cada tela tem o seu (`Carteira | Arco`, `Extrato | Arco`…), que é o que a aba, o histórico e o leitor de tela mostram ao trocar de tela.
+- **Cabeçalhos de segurança:** em produção o servidor manda `Content-Security-Policy` (só a própria origem: nenhum script, estilo, imagem ou fonte de fora, nenhum `eval`), `X-Frame-Options: DENY` e, em qualquer perfil, `X-Content-Type-Options: nosniff` e `Referrer-Policy`. O teste de integração confere a política inteira no JAR e o de navegador prova que ela é aplicada (script embutido, `eval`, estilo embutido e conexão a outra origem são barrados; nem a própria origem enquadra o app) e que o app inteiro, da vitrine ao envio, roda sem uma única violação.
 
 ### Rodar e construir
 
@@ -1056,7 +1057,7 @@ Desafio-picpay-quarkus/
 - **CPF e CNPJ só por dígito verificador.** Não há consulta à Receita Federal.
 - **Log de duplicidade.** O Hibernate registra em `ERROR` cada violação de unicidade, mesmo ela virando `409`; em produção isso gera ruído no log.
 - **Swagger UI ausente fora do modo dev.** No JAR empacotado, `/q/swagger-ui` não existe; a especificação continua em `/q/openapi`.
-- **Sem cabeçalhos de segurança nos arquivos do front.** O front é servido sem `Content-Security-Policy`, `X-Content-Type-Options` nem `frame-ancestors`. Ele não carrega nada de terceiros nem injeta HTML, mas, em produção, configure esses cabeçalhos no servidor ou no proxy.
+- **Cabeçalhos de segurança: o que fica de fora.** A política de conteúdo (CSP) e o `X-Frame-Options` só valem no JAR (perfil de produção): em desenvolvimento o Vite injeta um script embutido e abre um websocket, e a Dev UI do Quarkus se enquadra, então uma política estrita quebraria o `quarkus:dev`. E não há `Strict-Transport-Security` (HSTS): o TLS termina fora do app, e o cabeçalho é de quem o termina (o proxy). Se você puser o app atrás de um CDN ou serviço de terceiros, a política `'self'` o barra de propósito: alargue-a em `application.properties`.
 - **O front-end só é exercitado no Chromium.** Safari e Firefox não foram testados (o front usa recursos recentes de CSS, como `@property` e `overflow: clip`).
 - **Só pt-BR, só reais, só tema escuro.** A interface não tem outro idioma, outra moeda nem tema claro.
 - **Celular deitado.** Em janelas estreitas e baixas as cenas 2 e 3 da vitrine aparecem já no estado final, sem a animação do scroll (o palco delas não cabe numa janela assim).
