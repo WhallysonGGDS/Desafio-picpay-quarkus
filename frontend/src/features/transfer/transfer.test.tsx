@@ -349,8 +349,13 @@ describe('2 / 3: quanto', () => {
     expect(screen.getByText('Digite um valor válido, com até duas casas decimais.')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Quanto?' })).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(AMOUNT), '5');
+    // a próxima digitação apaga a mensagem mesmo que o texto continue inválido ("1,x"): ela volta no próximo Enter
+    await user.type(screen.getByLabelText(AMOUNT), 'x');
     expect(screen.queryByText('Digite um valor válido, com até duas casas decimais.')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Revisar envio' })).toBeDisabled();
+
+    await user.clear(screen.getByLabelText(AMOUNT));
+    await user.type(screen.getByLabelText(AMOUNT), '15');
     expect(screen.getByRole('button', { name: 'Revisar envio' })).toBeEnabled();
   });
 
@@ -596,8 +601,9 @@ describe('envio', () => {
     const user = typist();
     await screen.findByLabelText(SEARCH);
     await reachConfirmation(user);
+    const sendButton = send();
 
-    await user.click(send());
+    await user.click(sendButton);
 
     expect(
       await screen.findByText('O serviço de autorização recusou esta transferência. Seu saldo não mudou.'),
@@ -607,6 +613,10 @@ describe('envio', () => {
     expect(sessionCalls).toBe(1);
     const retry = screen.getByRole('button', { name: 'Tentar de novo' });
     expect(retry).toHaveFocus();
+    // É outro botão, não o de enviar com o texto trocado: num navegador de verdade o botão ocupado (desabilitado)
+    // perde o foco, e só um botão novo, que já nasce com autoFocus, o devolve à pessoa. O jsdom não tira o foco de
+    // um botão desabilitado, então só a identidade do nó prova que o mecanismo está lá.
+    expect(retry).not.toBe(sendButton);
     expect(screen.queryByRole('button', { name: SEND })).toBeNull();
 
     await user.click(retry);
@@ -732,6 +742,28 @@ describe('recusas que a pessoa corrige', () => {
     expect(screen.getByLabelText(AMOUNT)).toHaveValue('250,00');
     await waitFor(() => expect(screen.getByText(/^Disponível/)).toHaveTextContent('Disponível R$ 100,00'));
     expect(screen.getByRole('button', { name: 'Revisar envio' })).toBeDisabled();
+  });
+
+  // Quebra se: a recusa que SÓ o servidor conhece (aqui, validação) não aparecer no passo do valor, ou ficar presa
+  // depois de a pessoa digitar de novo. O saldo insuficiente não prova isto: o cliente o deriva sozinho.
+  it('recusa de validação do servidor volta ao passo do valor com a mensagem, e digitar a apaga', async () => {
+    api();
+    server.use(
+      http.post('*/transaction', () => errorResponse(400, 'VALIDATION_ERROR', [{ field: 'amount', code: 'INVALID_AMOUNT' }])),
+    );
+    renderApp('/transferir', { user: marina });
+    const user = typist();
+    await screen.findByLabelText(SEARCH);
+    await reachConfirmation(user);
+
+    await user.click(send());
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Quanto?' })).toBeInTheDocument();
+    expect(screen.getByText('Confira os dados informados.')).toBeInTheDocument();
+    expect(screen.getByLabelText(AMOUNT)).toHaveValue('250,00');
+
+    await user.type(screen.getByLabelText(AMOUNT), '1');
+    expect(screen.queryByText('Confira os dados informados.')).toBeNull();
   });
 
   // Quebra se: destinatário inexistente continuar escolhido, ou o valor digitado se perder na volta.
