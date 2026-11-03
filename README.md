@@ -4,9 +4,9 @@
 
 # PicPay Simplificado
 
-**API REST de carteira e transferências entre usuários, construída com Quarkus.**
+**API REST de carteira e transferências entre usuários, construída com Quarkus, e o front-end Arco, em React, servido pela mesma aplicação.**
 
-Cadastro e login com sessão em cookie, busca de destinatário, transferências com autorização externa, notificação de quem envia e de quem recebe, e extrato. Débito, crédito e registro acontecem em uma única transação de banco de dados, com o saldo travado contra concorrência.
+Cadastro e login com sessão em cookie, busca de destinatário, transferências com autorização externa, notificação de quem envia e de quem recebe, e extrato. Débito, crédito e registro acontecem em uma única transação de banco de dados, com o saldo travado contra concorrência. O **Arco** é a interface: uma vitrine que conta a transferência em seis cenas e o app em que se envia o dinheiro.
 
 <br>
 
@@ -14,6 +14,9 @@ Cadastro e login com sessão em cookie, busca de destinatário, transferências 
 ![Quarkus](https://img.shields.io/badge/Quarkus-3.15.1-0b0f19?style=flat-square&logo=quarkus&logoColor=4695EB)
 ![Hibernate ORM](https://img.shields.io/badge/Hibernate_ORM-Panache-0b0f19?style=flat-square&logo=hibernate&logoColor=white)
 ![H2](https://img.shields.io/badge/H2-em_memória-0b0f19?style=flat-square)
+![React](https://img.shields.io/badge/React-19-0b0f19?style=flat-square&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-0b0f19?style=flat-square&logo=typescript&logoColor=3178C6)
+![Vite](https://img.shields.io/badge/Vite-7-0b0f19?style=flat-square&logo=vite&logoColor=A78BFA)
 ![Maven Wrapper](https://img.shields.io/badge/Maven_Wrapper-3.9.8-0b0f19?style=flat-square&logo=apachemaven&logoColor=white)
 
 <br>
@@ -23,6 +26,7 @@ Cadastro e login com sessão em cookie, busca de destinatário, transferências 
 [Regras de negócio](#regras-de-negócio) ·
 [Sessão e segurança](#sessão-e-segurança) ·
 [Arquitetura](#arquitetura) ·
+[Front-end](#front-end-arco) ·
 [Execução](#instalação-e-execução) ·
 [API](#referência-da-api) ·
 [Limitações](#limitações-conhecidas) ·
@@ -41,6 +45,7 @@ Cadastro e login com sessão em cookie, busca de destinatário, transferências 
 - [Regras de negócio](#regras-de-negócio)
 - [Sessão e segurança](#sessão-e-segurança)
 - [Arquitetura](#arquitetura)
+- [Front-end (Arco)](#front-end-arco)
 - [Tecnologias utilizadas](#tecnologias-utilizadas)
 - [Pré-requisitos](#pré-requisitos)
 - [Instalação e execução](#instalação-e-execução)
@@ -71,6 +76,8 @@ O problema central do desafio é **movimentar saldo entre duas contas de forma c
 4. A aplicação valida as regras de negócio, trava os dois saldos e consulta o **serviço autorizador externo**. Se aprovada, debita o remetente, credita o destinatário e registra a transação, tudo em uma única transação de banco.
 5. Depois do commit, o **serviço de notificação externo** é acionado para as duas pontas, de forma assíncrona. O resultado de cada aviso fica registrado na própria transação (`PENDING`, `SENT` ou `FAILED`).
 6. O histórico é consultado em `GET /transaction`.
+
+O **front-end Arco** (`frontend/`, React) percorre exatamente esse fluxo: a vitrine em `/`, o cadastro e o login, a carteira, o envio em três passos e o extrato. Ele é construído junto com a aplicação e servido por ela, na mesma origem; veja [Front-end (Arco)](#front-end-arco).
 
 ### Perfis de usuário
 
@@ -242,6 +249,73 @@ A resposta `201` não espera os avisos: eles saem depois, em outra thread.
 
 ---
 
+## Front-end (Arco)
+
+O front-end vive em `frontend/` (Vite, React 19 e TypeScript) e é construído junto com o back-end pelo **Quinoa**: `./mvnw package` instala as dependências, gera o `dist/` e o embute no artefato. Como o app e a API saem da **mesma origem**, não há CORS, e o cookie de sessão `SameSite=Strict` funciona sem configuração. O front nunca toca o token (o cookie é `HttpOnly`): quem está logado é perguntado ao servidor (`GET /users/me`).
+
+A identidade é **escura, mínima e cinematográfica**: preto e azul-marinho, uma única cor de destaque (ciano), que só aparece onde há valor em movimento ou algo confirmado, tipografia Geist e Geist Mono (empacotadas, sem requisição externa) e muito espaço vazio.
+
+### Rotas
+
+| Rota | Quem acessa | O que é |
+| :--- | :--- | :--- |
+| `/` | Todos | A vitrine: seis cenas que contam a transferência |
+| `/entrar` · `/criar-conta` | Visitantes (quem já tem sessão vai à carteira) | Login e cadastro, de pessoa ou de loja |
+| `/carteira` | Logados | Saldo, as últimas movimentações e o atalho para enviar |
+| `/transferir` | Logados | Envio em três passos: para quem, quanto e confirmar. Lojas veem "Lojas recebem, não enviam." |
+| `/extrato` | Logados | Movimentações paginadas, com filtro por enviadas e recebidas |
+
+Sem sessão, uma rota privada leva a `/entrar?next=…`, e o login volta ao destino pedido (só caminhos do próprio app: `//evil.com` e `/\evil.com` são ignorados). Quando a sessão acaba (1 hora), **qualquer** chamada que receba `401` leva ao login, e o cache das consultas é descartado.
+
+### O envio
+
+- **Três passos**, com um arco de luz como indicador: a luz vai de quem envia ao destinatário enquanto o servidor autoriza.
+- **O valor é dinheiro de verdade**: texto no formato da API (`"250.00"`) e centavos inteiros em `bigint` na tela, nunca ponto flutuante.
+- **Nunca reenvia no escuro.** Se não dá para saber se o dinheiro saiu (a rede caiu depois do envio, resposta `5xx` ou 20 s sem resposta), a tela diz "Não deu para confirmar" e leva ao extrato: não há "Tentar de novo" e nada é reenviado sozinho. A primeira tentativa pode ter chegado e, como o back-end não tem [idempotência](#limitações-conhecidas), o dinheiro sairia duas vezes. A recusa do autorizador, ao contrário, é segura (nada foi gravado) e oferece "Tentar de novo".
+- **Dois cliques não enviam duas vezes:** o envio é travado de forma síncrona enquanto há uma tentativa a caminho.
+
+### A vitrine
+
+Seis cenas, uma história: **Impacto** (a abertura), **Contexto** (as quatro decisões de uma transferência), **Proposta** (a carteira de verdade, em que o saldo cai de R$ 1.000,00 a R$ 750,00 com o scroll), **Detalhes**, **Clímax** ("Enviado.") e **Conversão**. O scroll escreve o progresso de cada cena (`--p`, de 0 a 1) e o CSS desenha tudo a partir dele; só `transform`, `opacity` e o traço do arco são animados. O GSAP, o ScrollTrigger e o Lenis ficam num pacote à parte, baixado só por quem abre `/`.
+
+| Situação | O que acontece |
+| :--- | :--- |
+| `prefers-reduced-motion` | Sem rolagem suave, sem cenas fixas, nenhuma animação nem atraso: a vitrine inteira, no estado final e legível |
+| Celular em pé | Composição própria: o arco do contexto vira vertical, com o texto à direita dos nós |
+| Janela estreita e baixa (celular deitado) | As cenas fixadas não prendem: ficam em fluxo e já no estado final, sem texto sobreposto |
+
+### Qualidade
+
+Tudo isto é conferido por testes automáticos (veja [Testes do front-end](#testes-do-front-end)):
+
+- **Acessibilidade:** axe-core (WCAG 2.0 A e AA, 2.1 AA) em todas as telas, nos três passos do envio e na vitrine com movimento reduzido; contraste AA dos tokens; foco sempre visível e nunca coberto pela barra de navegação do celular.
+- **Largura:** nenhuma tela rola na horizontal a 320 px, e nenhum texto da vitrine fica cortado nem por cima de outro em janelas de 320×568 a 1440×900.
+- **Tamanho:** o pacote de entrada tem cerca de **127 kB** em gzip (orçamento: 170 kB) e o da vitrine, cerca de **55 kB** (orçamento: 70 kB); o GSAP não entra no de entrada. Nenhuma requisição sai da própria origem.
+
+### Rodar e construir
+
+| Modo | Comando | O que acontece |
+| :--- | :--- | :--- |
+| Desenvolvimento | `./mvnw quarkus:dev` | O Quinoa sobe o Vite (porta 5173) e encaminha para ele o que não é da API: abra <http://localhost:8080>, e o front recarrega ao salvar (atualizar a página em `/carteira` também funciona) |
+| Só o front, com proxy | `npm --prefix frontend run dev` | O Vite em <http://localhost:5173>, repassando `/auth`, `/users`, `/transaction` e `/hello` ao back-end em `localhost:8080`, que precisa estar rodando |
+| Empacotado | `./mvnw package` e `java -jar target/quarkus-app/quarkus-run.jar` | O Quinoa roda `npm install` e `npm run build`, e o `dist/` vai dentro do artefato: front e API em <http://localhost:8080> |
+| Só o back-end | `./mvnw package -Dquarkus.quinoa=false` | Pula o front, e dispensa o Node. A chave é `quarkus.quinoa`, não `quarkus.quinoa.enabled` |
+
+Scripts do `frontend/` (`npm --prefix frontend run <script>`):
+
+| Script | Para quê |
+| :--- | :--- |
+| `dev` · `build` | Servidor de desenvolvimento · build de produção (confere os tipos antes) |
+| `typecheck` | `tsc --noEmit`, inclusive dos testes e dos e2e |
+| `test` | Testes de unidade e de componente (Vitest) |
+| `e2e` | Testes de ponta a ponta (Playwright), contra o artefato empacotado |
+| `gen:api` · `check:api` | Gera os tipos da API a partir do OpenAPI que o `./mvnw package` grava em `target/openapi/` · confere se estão em dia |
+| `check:bundle` | O orçamento de tamanho do bundle (depois do `build`) |
+
+Quando o contrato da API mudar: `./mvnw -DskipTests package`, depois `npm --prefix frontend run gen:api`, e commite o `src/api/schema.d.ts`.
+
+---
+
 ## Tecnologias utilizadas
 
 ### Execução
@@ -272,7 +346,24 @@ A resposta `201` não espera os avisos: eles saem depois, em outra thread.
 | REST Assured | gerenciada pelo BOM | Testes de API HTTP |
 | Mockito (`quarkus-junit5-mockito`) | gerenciada pelo BOM | Substitui os serviços externos nos testes |
 | Awaitility | gerenciada pelo BOM | Espera pelos avisos assíncronos nos testes |
-| Node.js | 22 (opcional) | Stub dos serviços externos e smoke test |
+| Node.js | 22 | Build do front-end (pelo Quinoa), stub dos serviços externos e smoke test |
+
+### Front-end
+
+| Tecnologia | Versão | Finalidade |
+| :--- | :--- | :--- |
+| React | 19 | Interface |
+| TypeScript | 5.9 (`strict`) | Tipos |
+| Vite | 7 | Build e servidor de desenvolvimento |
+| React Router | 7 | Rotas e guardas de sessão |
+| TanStack Query | 5 | Estado do servidor: sessão, extrato e busca |
+| openapi-fetch · openapi-typescript | 0.17 · 7 | Chamadas tipadas a partir do OpenAPI do back-end |
+| GSAP (ScrollTrigger) · Lenis | 3.15 · 1.3 | Progresso por cena e rolagem suave (só na vitrine) |
+| CSS Modules e tokens CSS | n/a | Estilos, sem biblioteca de componentes |
+| Geist · Geist Mono (`@fontsource-variable`) | 5.3 | Tipografia, empacotada |
+| Quarkus Quinoa | 2.5.5 | Constrói e serve o front dentro do Quarkus |
+| Vitest · Testing Library · MSW · jsdom | 3 · 16 · 2 · 26 | Testes de unidade e de componente |
+| Playwright · axe-core | 1.63 · 4 | Testes de ponta a ponta e de acessibilidade (Chromium) |
 
 ---
 
@@ -283,7 +374,8 @@ A resposta `201` não espera os avisos: eles saem depois, em outra thread.
 | JDK 21 | O projeto compila com `release 21`. |
 | Acesso à internet | No primeiro build, para baixar o Maven e as dependências. Em execução, para alcançar os serviços externos em `util.devi.tools` (ou use o [stub local](#sem-acesso-ao-utildevitools-stub-local)). |
 | Git | Para clonar o repositório. |
-| Node.js 22 | **Opcional.** Só para `scripts/stub-externals.mjs` e `scripts/smoke-api.mjs`. |
+| Node.js 20.19+ ou 22.12+ | Para construir o front-end (o Vite 7 exige): o Quinoa o chama sozinho em `./mvnw package` e em `./mvnw quarkus:dev`. Também serve ao `scripts/stub-externals.mjs` e ao `scripts/smoke-api.mjs`. Dispensável com `-Dquarkus.quinoa=false`. |
+| Chromium do Playwright | **Opcional.** Só para os testes de ponta a ponta do front: `npm --prefix frontend exec playwright install chromium`. |
 | GraalVM ou Docker/Podman | Somente para a compilação nativa (opcional). |
 
 Não é necessário instalar o Maven: o Maven Wrapper (`mvnw` / `mvnw.cmd`) baixa a versão configurada automaticamente. Também não é necessário instalar banco de dados, porque o H2 roda em memória dentro da aplicação.
@@ -322,6 +414,9 @@ Também estão disponíveis:
 | Swagger UI | <http://localhost:8080/q/swagger-ui> |
 | Especificação OpenAPI | <http://localhost:8080/q/openapi> |
 | Dev UI do Quarkus | <http://localhost:8080/q/dev-ui> |
+| O app (front-end, com recarga ao vivo) | <http://localhost:8080> |
+
+O Quinoa sobe o Vite junto e encaminha para ele tudo o que não é da API. Os outros modos do front estão em [Rodar e construir](#rodar-e-construir).
 
 > No Windows, use `mvnw.cmd` no lugar de `./mvnw` em todos os comandos.
 
@@ -335,10 +430,13 @@ Detalhes na seção [Testes](#testes).
 
 ### 4. Empacotar
 
-Gera o artefato em `target/quarkus-app/` e grava o esquema OpenAPI em `target/openapi/`:
+Gera o artefato em `target/quarkus-app/` e grava o esquema OpenAPI em `target/openapi/`. O Quinoa também constrói o front-end (`npm install` e `npm run build`) e o embute no artefato:
 
 ```bash
 ./mvnw package
+
+# só o back-end, sem o Node
+./mvnw package -Dquarkus.quinoa=false
 ```
 
 Para gerar um único JAR com todas as dependências (*über-jar*):
@@ -357,7 +455,7 @@ java -jar target/quarkus-app/quarkus-run.jar
 java -jar target/picpay-simplificado-1.0.0-SNAPSHOT-runner.jar
 ```
 
-No perfil de produção o cookie de sessão é `Secure`: o navegador só o aceita por HTTPS (ou em `localhost`). Para testar por HTTP puro, acrescente `-Dapp.jwt.cookie-secure=false`. As contas de demonstração ficam desligadas por padrão; para criá-las, use `-Dapp.seed.enabled=true`.
+O app e a API ficam em <http://localhost:8080>. No perfil de produção o cookie de sessão é `Secure`: o navegador só o aceita por HTTPS (ou em `localhost`). Para testar por HTTP puro, acrescente `-Dapp.jwt.cookie-secure=false`. As contas de demonstração ficam desligadas por padrão; para criá-las, use `-Dapp.seed.enabled=true`.
 
 Fora do modo de desenvolvimento o Swagger UI não é incluído, mas a especificação continua disponível em `/q/openapi`.
 
@@ -854,6 +952,30 @@ java -Dapp.seed.enabled=true -Dapp.jwt.cookie-secure=false \
 node scripts/smoke-api.mjs
 ```
 
+### Testes do front-end
+
+Hoje: **105** testes Java e **7** de integração sobre o artefato, **501** testes de unidade e de componente (Vitest, 37 arquivos) e **124** de ponta a ponta (Playwright: 123 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
+
+```bash
+npm --prefix frontend run typecheck && npm --prefix frontend test
+npm --prefix frontend run check:api              # os tipos da API estão em dia com o OpenAPI?
+npm --prefix frontend run build && npm --prefix frontend run check:bundle
+
+./mvnw -DskipTests package                       # o e2e roda contra o artefato empacotado
+npm --prefix frontend run e2e
+```
+
+O Playwright sobe sozinho o [stub](#sem-acesso-ao-utildevitools-stub-local) (porta 9000) e o artefato (porta 8080), e reaproveita os dois se já estiverem de pé fora do CI. Os testes usam o fuso `America/Sao_Paulo` e o idioma `pt-BR`, para as datas saírem iguais em qualquer máquina. As capturas de tela dos testes ficam em `frontend/e2e/__screenshots__/` (fora do git).
+
+| Arquivo | O que verifica |
+| :--- | :--- |
+| `app.spec.ts` | Cadastro pela tela, envio de ponta a ponta, extrato, saída e os dois avisos; login que volta ao destino pedido; lojista que não envia |
+| `failures.spec.ts` | Autorizador que recusa e que cai, saldo insuficiente, sessão que vence (no envio e ao abrir o extrato) e resultado desconhecido sem reenvio |
+| `showcase.spec.ts` | As seis cenas em quatro tamanhos de janela: progresso, saldo caindo com o scroll, CTA e links, movimento reduzido, cenas fixadas |
+| `quality.spec.ts` | axe-core, 320 px, texto cortado ou sobreposto, foco coberto, movimento reduzido sem atrasos, console limpo, fontes e origens, ícone da aba |
+
+Os projetos do Playwright são `desktop` (1440×900) e `phone` (390×844) para todos os arquivos, mais `notebook` (1366×768) e `tablet` (768×1024) só para a vitrine. **Só o Chromium** é exercitado.
+
 ---
 
 ## Estrutura de diretórios
@@ -866,6 +988,17 @@ Desafio-picpay-quarkus/
 ├── scripts/
 │   ├── stub-externals.mjs             stub do autorizador e do notificador
 │   └── smoke-api.mjs                  smoke test de ponta a ponta
+├── frontend/                          o front-end Arco (Vite + React), construído pelo Quinoa
+│   ├── index.html · public/           página de entrada e ícone da aba
+│   ├── src/
+│   │   ├── api/                       cliente tipado, erros com código estável e os textos de erro
+│   │   ├── app/                       rotas, guardas de sessão, layouts e o cliente de consultas
+│   │   ├── design/                    tokens, tipografia e primitivos (Button, Field, Money…)
+│   │   ├── features/                  auth · wallet · statement · transfer (o fluxo de envio)
+│   │   ├── lib/                       dinheiro, documento e datas
+│   │   └── showcase/                  a vitrine: motor de scroll, arco e as seis cenas
+│   ├── e2e/                           Playwright: app, falhas, vitrine e qualidade
+│   └── scripts/                       gen-api.mjs · check-bundle.mjs
 ├── docs/superpowers/                  spec de design e planos de implementação
 └── src/
     ├── main/
@@ -916,11 +1049,14 @@ Desafio-picpay-quarkus/
 - **A busca de destinatário revela se uma conta existe.** Qualquer usuário logado pode testar e-mails e documentos, sem limite de consultas, e descobrir se há conta e qual o nome. Isso é inerente a "enviar para alguém pelo e-mail ou CPF", mas, sem *rate limiting*, permite varredura.
 - **Logout não revoga o token.** Sair expira o cookie no navegador, mas o JWT já emitido continua válido até vencer (1 hora): a sessão é sem estado e não há lista de revogação.
 - **Sem renovação de sessão.** A sessão dura 1 hora e depois exige novo login.
-- **Sem idempotência em `POST /transaction`.** Reenviar a mesma requisição cria uma segunda transferência. O cliente deve impedir o envio duplo (por exemplo, desabilitando o botão durante a requisição).
+- **Sem idempotência em `POST /transaction`.** Reenviar a mesma requisição cria uma segunda transferência. O cliente deve impedir o envio duplo (por exemplo, desabilitando o botão durante a requisição). O front-end do repositório faz isso, e por isso nunca reenvia depois de um resultado desconhecido (rede caída, `5xx` ou 20 s sem resposta): diz que não deu para confirmar e leva ao extrato.
 - **Aviso pode ficar `PENDING`.** Os avisos saem em memória, depois do commit. Se o processo cair entre o commit e o envio, o aviso fica `PENDING` para sempre: não há reprocessamento.
 - **CPF e CNPJ só por dígito verificador.** Não há consulta à Receita Federal.
 - **Log de duplicidade.** O Hibernate registra em `ERROR` cada violação de unicidade, mesmo ela virando `409`; em produção isso gera ruído no log.
 - **Swagger UI ausente fora do modo dev.** No JAR empacotado, `/q/swagger-ui` não existe; a especificação continua em `/q/openapi`.
+- **O front-end só é exercitado no Chromium.** Safari e Firefox não foram testados (o front usa recursos recentes de CSS, como `@property` e `overflow: clip`).
+- **Só pt-BR, só reais, só tema escuro.** A interface não tem outro idioma, outra moeda nem tema claro.
+- **Celular deitado.** Em janelas estreitas e baixas as cenas 2 e 3 da vitrine aparecem já no estado final, sem a animação do scroll (o palco delas não cabe numa janela assim).
 - **Autorizador público intermitente.** O `util.devi.tools` recusa parte das requisições de propósito; transferências válidas às vezes voltam como `AUTHORIZATION_DENIED`.
 
 ---
@@ -940,11 +1076,15 @@ Os itens marcados já foram entregues; os demais seguem como propostas.
 - [x] URLs dos serviços externos definidas em `application.properties`.
 - [x] Testes unitários e de integração para as regras de negócio.
 - [x] Endpoints de consulta de transações.
+- [x] Front-end Arco: vitrine, cadastro, login, carteira, envio em três passos e extrato, servido pelo Quarkus.
+- [x] Testes de acessibilidade, largura mínima, console e orçamento do bundle do front-end.
 - [ ] Banco persistente (por exemplo, PostgreSQL) com migrações versionadas.
 - [ ] Chave de idempotência em `POST /transaction`.
 - [ ] Limite de tentativas (*rate limiting*) no login e na busca de destinatário.
 - [ ] Renovação de sessão (*refresh token*) e revogação do token no logout.
 - [ ] Reprocessamento dos avisos que ficaram `PENDING` (padrão *outbox*).
+- [ ] Testes de ponta a ponta também no Safari e no Firefox.
+- [ ] Tema claro e outros idiomas no front-end.
 
 ---
 
@@ -952,7 +1092,7 @@ Os itens marcados já foram entregues; os demais seguem como propostas.
 
 1. Faça um *fork* do repositório.
 2. Crie uma branch a partir de `master`: `git checkout -b minha-melhoria`.
-3. Faça as alterações e garanta que os testes passam: `./mvnw verify -DskipITs=false`.
+3. Faça as alterações e garanta que os testes passam: `./mvnw verify -DskipITs=false` e, se mexeu no front, `npm --prefix frontend test`.
 4. Faça o commit com uma mensagem descritiva.
 5. Abra um *pull request* explicando o que mudou e por quê.
 
@@ -968,4 +1108,5 @@ O repositório não define uma licença até o momento. Na ausência de licença
 
 - Projeto inspirado no desafio técnico de back-end do **PicPay**.
 - Serviços de autorização e notificação simulados disponibilizados em `util.devi.tools`.
+- Front-end construído com [React](https://react.dev/), [Vite](https://vite.dev/), [TanStack Query](https://tanstack.com/query), [GSAP](https://gsap.com/) (licença *no charge*), [Lenis](https://lenis.darkroom.engineering/) (MIT) e as fontes [Geist](https://vercel.com/font) (OFL 1.1).
 - Construído com [Quarkus](https://quarkus.io/). Guias usados como referência: [REST](https://quarkus.io/guides/rest), [REST Client](https://quarkus.io/guides/rest-client), [Hibernate ORM com Panache](https://quarkus.io/guides/hibernate-orm-panache), [SmallRye JWT](https://quarkus.io/guides/security-jwt) e [OpenAPI e Swagger UI](https://quarkus.io/guides/openapi-swaggerui).
