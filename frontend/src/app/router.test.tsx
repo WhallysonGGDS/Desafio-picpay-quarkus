@@ -1,11 +1,16 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { errorResponse } from '../test/api';
 import { marina } from '../test/fixtures';
 import { currentUrl, renderApp, renderRoutes } from '../test/render';
 import { server } from '../test/server';
+
+// A vitrine liga o Lenis e o ScrollTrigger, que precisam de layout, ResizeObserver e matchMedia: o jsdom não tem nada disso. Aqui só
+// importa a rota (a raiz é pública e não redireciona). O motor tem teste próprio (useScrollScenes.test) e roda num navegador
+// de verdade (e2e/showcase.spec).
+vi.mock('../showcase/useScrollScenes', () => ({ useScrollScenes: () => undefined }));
 
 const mainNav = () => screen.findByRole('navigation', { name: 'Principal' });
 

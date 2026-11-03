@@ -1,0 +1,146 @@
+/* O progresso de cada cena, de 0 a 1. Registrada como número para o CSS poder animá-la (a cena 1 desenha o arco por tempo)
+   e para o calc() abaixo receber um número, não um texto. */
+@property --p {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+.scene {
+  position: relative;
+}
+
+/* Cena fixada: a janela inteira, nem um pixel a mais. O motor a prende enquanto o progresso corre. */
+.scene[data-pinned] {
+  height: 100svh;
+  overflow: hidden;
+}
+
+/* O arco ocupa a caixa que a cena lhe dá; dentro dela, os dois caminhos e os nós ficam sobrepostos. */
+.arc {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.arc svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Duas orientações, uma por vez: vertical no celular, horizontal a partir de 768 px. */
+@media (min-width: 768px) {
+  .arc[data-orientation='auto'] .svgV {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .arc[data-orientation='auto'] .svgH {
+    display: none;
+  }
+}
+
+.track,
+.light,
+.halo,
+.head {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.track {
+  stroke: var(--line);
+  stroke-width: 1px;
+}
+
+/* O traço de luz mede 1 (pathLength). "Traço 1, lacuna 2": a lacuna é maior que o arco, então recolhido (offset 1)
+   nenhum traço, nem de comprimento zero, cai na ponta. Desenhado até `--p`. */
+.light {
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  stroke-dasharray: 1 2;
+  stroke-dashoffset: calc(1 - var(--p));
+}
+
+/* A cabeça: um traço minúsculo que, com a ponta redonda, vira um ponto. Anda em `--p`, na frente do traço de luz. */
+.halo,
+.head {
+  stroke: var(--accent);
+  stroke-dasharray: 0.0001 2;
+  stroke-dashoffset: calc(0 - var(--p));
+}
+
+.halo {
+  stroke-width: 18px;
+  opacity: 0.14;
+}
+
+.head {
+  stroke-width: 6px;
+}
+
+/* Nós: uma âncora sem tamanho no ponto do arco; o ponto e o conteúdo se posicionam a partir dela. Mobile primeiro:
+   as posições verticais; a partir de 768 px, as horizontais. */
+.nodes {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.node {
+  --lit: clamp(0, calc((var(--p) - var(--t)) * 30), 1);
+  position: absolute;
+  left: var(--xv);
+  top: var(--yv);
+  width: 0;
+  height: 0;
+}
+
+@media (min-width: 768px) {
+  .arc[data-orientation='auto'] .node {
+    left: var(--xh);
+    top: var(--yh);
+  }
+}
+
+.arc[data-orientation='horizontal'] .node {
+  left: var(--xh);
+  top: var(--yh);
+}
+
+.arc[data-orientation='vertical'] .node {
+  left: var(--xv);
+  top: var(--yv);
+}
+
+/* O ponto acende (opacidade) e cresce (escala) quando a luz passa: só transform e opacidade. */
+.dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: calc(0.25 + 0.75 * var(--lit));
+  transform: translate(-50%, -50%) scale(calc(0.7 + 0.3 * var(--lit)));
+}
+
+/* Esqueleto do motor (as cenas de verdade entram depois): cada cena ocupa a janela e centraliza o que tem. */
+.placeholder {
+  display: grid;
+  align-content: center;
+  gap: var(--sp-6);
+  min-height: 100svh;
+  padding: var(--gutter);
+}
+
+.placeholderArc {
+  height: 40svh;
+}
