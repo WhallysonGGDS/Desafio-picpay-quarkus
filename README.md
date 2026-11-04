@@ -980,12 +980,25 @@ O Playwright sobe sozinho o [stub](#sem-acesso-ao-utildevitools-stub-local) (por
 
 Os projetos do Playwright são `desktop` (1440×900) e `phone` (390×844) para todos os arquivos, mais `notebook` (1366×768) e `tablet` (768×1024) só para a vitrine. **Só o Chromium** é exercitado.
 
+### Integração contínua
+
+O GitHub Actions (`.github/workflows/ci.yml`) roda a cada pull request e a cada push na `master`, num único job, o mesmo caminho que você faria à mão:
+
+1. `npm --prefix frontend ci`, para instalar as dependências do front-end;
+2. `./mvnw -B -ntp verify -DskipITs=false`: testes do back-end, build do front-end pelo Quinoa, contrato OpenAPI gravado e testes de integração sobre o jar;
+3. `typecheck`, `test`, `check:api`, `build` e `check:bundle` do front-end (os pacotes têm orçamento de tamanho);
+4. o Chromium do Playwright e a suíte de ponta a ponta (`npm --prefix frontend run e2e`) contra o jar, com o stub dos serviços externos.
+
+Se algo falha, os rastros do Playwright (`frontend/test-results`) ficam por 7 dias como artefato do job (`playwright-test-results`). Um novo push cancela a execução anterior da mesma branch. O job não usa segredos nem chama serviços externos: o autorizador e o notificador são o stub local.
+
+
 ---
 
 ## Estrutura de diretórios
 
 ```text
 Desafio-picpay-quarkus/
+├── .github/workflows/ci.yml          integração contínua (GitHub Actions)
 ├── .mvn/wrapper/                      configuração do Maven Wrapper
 ├── mvnw · mvnw.cmd                    Maven Wrapper (Linux/macOS · Windows)
 ├── pom.xml                            dependências, plugins e perfil native
