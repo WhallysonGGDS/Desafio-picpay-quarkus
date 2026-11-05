@@ -6,6 +6,8 @@ import { errorResponse } from '../test/api';
 import { marina } from '../test/fixtures';
 import { sessionKey } from './session';
 import { currentUrl, renderApp, renderRoutes } from '../test/render';
+import { routes } from './router';
+import type { RouteObject } from 'react-router-dom';
 import { server } from '../test/server';
 
 // A vitrine liga o Lenis e o ScrollTrigger, que precisam de layout, ResizeObserver e matchMedia: o jsdom não tem nada disso. Aqui só
@@ -156,6 +158,58 @@ describe('AppShell', () => {
 
     await waitFor(() => expect(currentUrl(router)).toBe('/entrar'));
     expect(screen.queryByRole('navigation', { name: 'Principal' })).toBeNull();
+  });
+
+  // A mesma árvore de rotas, com a rota `path` demorando `ms` para abrir (um carregador lento), como num celular ou num servidor de CI
+  // lento: a navegação para ela fica pendente, e a guarda da tela de onde se sai ainda está montada.
+  function withSlowRoute(tree: RouteObject[], path: string, ms: number): RouteObject[] {
+    return tree.map((route) => ({
+      ...route,
+      ...(route.path === path ? { loader: () => new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)) } : {}),
+      ...(route.children ? { children: withSlowRoute(route.children, path, ms) } : {}),
+    })) as RouteObject[];
+  }
+
+  // Quebra se: o Sair, com a navegação para /entrar ainda em andamento, deixar a guarda das telas privadas (que acaba de ver a sessão
+  // ir a null) mandar a pessoa a /entrar?next=%2Fcarteira: a próxima pessoa a entrar cairia na página da anterior. Era uma corrida:
+  // no computador do autor a navegação ganhava, no servidor de CI não, e o teste de cima falhava só lá.
+  it('Sair vai a /entrar sem next também quando a navegação demora', async () => {
+    server.use(http.post('*/auth/logout', () => new HttpResponse(null, { status: 204 })));
+    const { router } = renderApp('/carteira', { user: marina, tree: withSlowRoute(routes, '/entrar', 150) });
+    await mainNav();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Sair' }));
+
+    await waitFor(() => expect(currentUrl(router)).toBe('/entrar'), { timeout: 3000 });
+    // Depois que tudo assenta (a navegação lenta e qualquer redirecionamento da guarda), continua sem next.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(currentUrl(router)).toBe('/entrar');
+    expect(screen.queryByRole('navigation', { name: 'Principal' })).toBeNull();
+  });
+
+  // Quebra se: o marcador de saída não for apagado ao entrar de novo: a sessão que vence depois perderia o destino (`next`) e a pessoa
+  // voltaria à carteira em vez da tela em que estava.
+  it('depois de sair e entrar de novo, a sessão que vence volta a levar o destino', async () => {
+    server.use(
+      http.post('*/auth/logout', () => new HttpResponse(null, { status: 204 })),
+      http.post('*/auth/login', () => HttpResponse.json(marina)),
+    );
+    const { router, queryClient } = renderApp('/carteira', { user: marina });
+    await mainNav();
+    const person = userEvent.setup();
+    await person.click(screen.getByRole('button', { name: 'Sair' }));
+    await waitFor(() => expect(currentUrl(router)).toBe('/entrar'));
+
+    await person.type(await screen.findByLabelText('E-mail'), 'marina@arco.demo');
+    await person.type(screen.getByLabelText('Senha'), 'demo1234');
+    await person.click(screen.getByRole('button', { name: 'Entrar na carteira' }));
+    await waitFor(() => expect(currentUrl(router)).toBe('/carteira'));
+
+    // A sessão vence e a consulta dela mesma (que trata 401 como "deslogado", sem passar pelo tratamento global de 401) volta null.
+    server.use(http.get('*/users/me', () => errorResponse(401, 'UNAUTHENTICATED')));
+    await queryClient.invalidateQueries({ queryKey: ['session'] });
+
+    await waitFor(() => expect(currentUrl(router)).toBe('/entrar?next=%2Fcarteira'));
   });
 
   // Quebra se: o Sair fingir que saiu quando o servidor não respondeu (o cookie HttpOnly continuaria vivo).

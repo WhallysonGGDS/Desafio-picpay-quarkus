@@ -1,6 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
-import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider, type RouteObject } from 'react-router-dom';
 import type { User } from '../api/types';
 import { routes } from '../app/router';
 import { mockSession, testQueryClient } from './api';
@@ -9,9 +9,9 @@ import { mockSession, testQueryClient } from './api';
  * Monta o app inteiro (as rotas reais) numa rota inicial, sem registrar a sessão: quem chama controla a resposta de
  * GET /users/me (com server.use) antes de montar. Devolve o router (para conferir a URL) e o queryClient.
  */
-export function renderRoutes(route: string) {
+export function renderRoutes(route: string, tree: RouteObject[] = routes) {
   const queryClient = testQueryClient();
-  const router = createMemoryRouter(routes, { initialEntries: [route] });
+  const router = createMemoryRouter(tree, { initialEntries: [route] });
   const view = render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -21,9 +21,9 @@ export function renderRoutes(route: string) {
 }
 
 /** Como renderRoutes, já com a sessão pedida: um usuário, ou null para deslogado. */
-export function renderApp(route: string, { user = null }: { user?: User | null } = {}) {
+export function renderApp(route: string, { user = null, tree }: { user?: User | null; tree?: RouteObject[] } = {}) {
   mockSession(user);
-  return renderRoutes(route);
+  return renderRoutes(route, tree);
 }
 
 /** A URL atual do router de teste, com a busca: "/entrar?next=%2Ftransferir". */

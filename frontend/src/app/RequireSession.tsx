@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import type { ApiError } from '../api/ApiError';
 import { messageFor } from '../api/errorMessages';
@@ -6,7 +7,7 @@ import { Wordmark } from '../design/Wordmark';
 import { ROUTES } from '../routes';
 import styles from './RequireSession.module.css';
 import { Splash } from './Splash';
-import { useSession } from './session';
+import { sessionEndKey, useSession } from './session';
 
 function SessionError({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
   return (
@@ -26,10 +27,13 @@ function SessionError({ error, onRetry }: { error: ApiError; onRetry: () => void
 export function RequireSession() {
   const { user, isLoading, error, retry } = useSession();
   const location = useLocation();
+  const queryClient = useQueryClient();
 
   if (isLoading) return <Splash />;
   if (error) return <SessionError error={error} onRetry={retry} />;
   if (!user) {
+    // Quem saiu por vontade própria vai ao login sem `next` (ver sessionEndKey).
+    if (queryClient.getQueryData(sessionEndKey) === 'logout') return <Navigate to={ROUTES.login} replace />;
     const next = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`${ROUTES.login}?next=${next}`} replace />;
   }

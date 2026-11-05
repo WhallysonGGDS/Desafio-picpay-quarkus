@@ -7,6 +7,14 @@ import { ROUTES } from '../routes';
 
 export const sessionKey = ['session'] as const;
 
+/**
+ * Por que a sessão acabou, quando foi a própria pessoa que saiu (`'logout'`). A guarda das telas privadas lê isto para mandar quem
+ * saiu ao login SEM o `next`: sem isto, ela e o Sair disputavam o destino (o Sair vai a /entrar; a guarda, que vê a sessão virar
+ * null enquanto a tela de onde se sai ainda está montada, vai a /entrar?next=...), quem chegava primeiro dependia da velocidade da
+ * máquina, e a próxima pessoa a entrar podia cair na página da anterior. Uma sessão que vence (401) não deixa marcador.
+ */
+export const sessionEndKey = ['session-end'] as const;
+
 export interface Session {
   /** `undefined`: ainda não se sabe (carregando, ou a consulta falhou). `null`: deslogado. */
   user: User | null | undefined;
@@ -43,7 +51,10 @@ export function useLogin() {
   const queryClient = useQueryClient();
   return useMutation<User, ApiError, LoginBody>({
     mutationFn: (body) => api.login(body),
-    onSuccess: (user) => queryClient.setQueryData(sessionKey, user),
+    onSuccess: (user) => {
+      queryClient.removeQueries({ queryKey: sessionEndKey });
+      queryClient.setQueryData(sessionKey, user);
+    },
   });
 }
 
@@ -51,7 +62,10 @@ export function useRegister() {
   const queryClient = useQueryClient();
   return useMutation<User, ApiError, RegisterBody>({
     mutationFn: (body) => api.register(body),
-    onSuccess: (user) => queryClient.setQueryData(sessionKey, user),
+    onSuccess: (user) => {
+      queryClient.removeQueries({ queryKey: sessionEndKey });
+      queryClient.setQueryData(sessionKey, user);
+    },
   });
 }
 
@@ -68,6 +82,8 @@ export function useLogout() {
     onSuccess: () => {
       navigate(ROUTES.login, { replace: true });
       queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== sessionKey[0] });
+      // O marcador entra DEPOIS da limpeza acima e ANTES de a sessão ir a null: a guarda lê o marcador no render que a sessão nula provoca.
+      queryClient.setQueryData(sessionEndKey, 'logout');
       queryClient.setQueryData(sessionKey, null);
     },
   });
