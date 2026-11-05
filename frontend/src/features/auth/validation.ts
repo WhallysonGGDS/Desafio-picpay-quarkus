@@ -26,7 +26,10 @@ export interface RegisterForm {
 const MAX_NAME = 80;
 const MAX_EMAIL = 160;
 const PASSWORD_MIN = 8;
+/** O máximo é em BYTES (UTF-8), como no servidor: o BCrypt só lê os 72 primeiros, e "é" tem 2 bytes. */
 const PASSWORD_MAX = 72;
+
+const utf8Bytes = (text: string): number => new TextEncoder().encode(text).length;
 
 const isBlank = (text: string) => text.trim() === '';
 
@@ -55,7 +58,7 @@ export function validateRegister(form: RegisterForm): FieldCodes<RegisterField> 
     password:
       form.password === ''
         ? 'REQUIRED'
-        : form.password.length < PASSWORD_MIN || form.password.length > PASSWORD_MAX
+        : form.password.length < PASSWORD_MIN || utf8Bytes(form.password) > PASSWORD_MAX
           ? 'PASSWORD_LENGTH'
           : undefined,
   };

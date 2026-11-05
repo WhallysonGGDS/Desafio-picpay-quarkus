@@ -49,6 +49,14 @@ describe('validateRegister', () => {
     expect(validateRegister({ ...valid, userType: 'MERCHANT', document: '529.982.247-25' })).toEqual({ document: 'INVALID_DOCUMENT' });
   });
 
+  // Quebra se: o limite voltar a contar caracteres. O servidor só aceita 72 BYTES (o BCrypt ignora o que vem depois): 40 letras "é" são 80 bytes.
+  it('a senha também não passa de 72 bytes em UTF-8', () => {
+    expect(validateRegister({ ...valid, password: 'é'.repeat(40) })).toEqual({ password: 'PASSWORD_LENGTH' });
+    expect(validateRegister({ ...valid, password: 'é'.repeat(36) })).toEqual({});
+    expect(validateRegister({ ...valid, password: 'x'.repeat(71) + 'é' })).toEqual({ password: 'PASSWORD_LENGTH' }); // 73 bytes
+    expect(validateRegister({ ...valid, password: 'x'.repeat(70) + 'é' })).toEqual({}); // 72 bytes
+  });
+
   // Quebra se: a senha curta ou longa demais passar, ou a senha for aparada (o espaço faz parte dela).
   it('a senha tem de 8 a 72 caracteres, contados como estão (espaços valem)', () => {
     expect(validateRegister({ ...valid, password: '1234567' })).toEqual({ password: 'PASSWORD_LENGTH' });
