@@ -145,6 +145,45 @@ describe('extrato', () => {
     expect(screen.getByRole('tab', { name: 'Recebidas' })).toHaveFocus();
   });
 
+  // Quebra se: o atalho do navegador (Alt+seta para voltar) for engolido pelas abas, que tratam a seta mesmo com modificador.
+  it('as setas com Alt, Ctrl ou Cmd não trocam de aba (são atalhos do navegador)', async () => {
+    mockStatement(() => HttpResponse.json(page([tx()], 1)));
+    await openStatement();
+    const user = userEvent.setup();
+    await screen.findByText('Rafael Costa');
+
+    screen.getByRole('tab', { name: 'Tudo' }).focus();
+    await user.keyboard('{Alt>}{ArrowLeft}{/Alt}{Control>}{ArrowRight}{/Control}{Meta>}{End}{/Meta}');
+
+    expect(screen.getByRole('tab', { name: 'Tudo' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Tudo' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  // Quebra se: "Carregar mais" repetir uma linha quando chega uma transferência NOVA entre as páginas. A paginação é por deslocamento:
+  // com 25 movimentos (25..1) e 20 na tela, a chegada do 26 empurra tudo e a página 2 volta com o 6 outra vez. Linha repetida num
+  // extrato parece cobrança em duplicidade.
+  it('uma transferência nova entre as páginas não repete linha', async () => {
+    let arrived = false;
+    const row = (id: number) => tx({ id, amount: `${id}.00` });
+    mockStatement((query) => {
+      const size = Number(query.get('size') ?? 20);
+      const from = Number(query.get('page') ?? 0) * size;
+      const ids = Array.from({ length: arrived ? 26 : 25 }, (_, index) => (arrived ? 26 : 25) - index);
+      return HttpResponse.json(page(ids.slice(from, from + size).map(row), ids.length, Number(query.get('page') ?? 0), size));
+    });
+    await openStatement();
+    await screen.findByText('25 movimentações');
+
+    arrived = true;
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Carregar mais' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Carregar mais' })).toBeNull());
+
+    // R$ 6,00 é a linha que a nova página repetiria.
+    const rows = screen.getAllByRole('listitem');
+    expect(rows.filter((item) => /\b6,00/.test(item.textContent ?? ''))).toHaveLength(1);
+    expect(rows).toHaveLength(25);
+  });
+
   // Quebra se: "Carregar mais" não trouxer a página seguinte, repetir a primeira, ou continuar aparecendo no fim.
   it('"Carregar mais" traz a página 1 e some quando acabou', async () => {
     const queries = mockStatement((query) =>

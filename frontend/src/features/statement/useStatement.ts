@@ -19,7 +19,13 @@ export function useStatement(direction: StatementDirection, size = 20) {
     getNextPageParam: (last) => ((last.page + 1) * last.size < last.total ? last.page + 1 : undefined),
   });
 
-  const items = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
+  // A paginação é por deslocamento: uma transferência nova entre as páginas empurra as linhas e a página seguinte repete a última da
+  // anterior. Cada movimento aparece uma vez (um extrato com linha repetida parece cobrança em duplicidade); o movimento novo entra
+  // quando o extrato é recarregado.
+  const items = useMemo(() => {
+    const seen = new Set<number>();
+    return (query.data?.pages ?? []).flatMap((page) => page.items).filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true)));
+  }, [query.data]);
 
   return {
     items,

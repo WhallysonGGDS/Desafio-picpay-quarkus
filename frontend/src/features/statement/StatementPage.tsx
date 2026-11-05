@@ -30,6 +30,8 @@ export function StatementPage() {
 
   // Padrão ARIA de abas, com ativação automática: as setas trocam de aba (dando a volta nas pontas), Home e End vão às pontas.
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // Alt+seta (voltar), Ctrl+seta e afins são do navegador ou do sistema: não são da aba.
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     const index = TABS.findIndex((tab) => tab.direction === direction);
     const last = TABS.length - 1;
     const target =
