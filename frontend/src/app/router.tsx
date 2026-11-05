@@ -9,6 +9,7 @@ import { ROUTES } from '../routes';
 import { AppShell } from './layouts/AppShell';
 import { PublicShell } from './layouts/PublicShell';
 import { NotFound } from './pages/NotFound';
+import { RouteError } from './pages/RouteError';
 import { RedirectIfSignedIn } from './RedirectIfSignedIn';
 import { RequireSession } from './RequireSession';
 import { RouteFocus } from './RouteFocus';
@@ -20,6 +21,7 @@ const Showcase = lazy(() => import('../showcase/Showcase'));
 export const routes: RouteObject[] = [
   {
     element: <RouteFocus />,
+    errorElement: <RouteError />,
     children: [
       {
         path: ROUTES.home,

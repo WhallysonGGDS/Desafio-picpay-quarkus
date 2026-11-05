@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { ApiError } from '../api/ApiError';
@@ -46,15 +46,25 @@ export function useSession(): Session {
   };
 }
 
-// Entrar e criar conta já devolvem o perfil: grava direto, sem outra ida ao servidor.
+/**
+ * Uma sessão nova (entrar ou criar conta, que já devolvem o perfil: grava direto, sem outra ida ao servidor). Antes de gravar:
+ * - cancela a consulta da sessão que ainda esteja em voo: o pedido dela saiu antes do login (sem cookie), e a resposta velha, um 401
+ *   ou um perfil antigo, chegaria depois e sobrescreveria a sessão que acabou de ser gravada;
+ * - descarta as consultas que a pessoa anterior deixou no cache (o extrato dela), e com elas o marcador de saída: quem entra na mesma
+ *   aba não pode ver, nem por um instante, as linhas de quem estava antes, que sai pelo 401 da consulta da sessão sem passar pelo
+ *   tratamento global de 401.
+ */
+async function startSession(queryClient: QueryClient, user: User): Promise<void> {
+  await queryClient.cancelQueries({ queryKey: sessionKey });
+  queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== sessionKey[0] });
+  queryClient.setQueryData(sessionKey, user);
+}
+
 export function useLogin() {
   const queryClient = useQueryClient();
   return useMutation<User, ApiError, LoginBody>({
     mutationFn: (body) => api.login(body),
-    onSuccess: (user) => {
-      queryClient.removeQueries({ queryKey: sessionEndKey });
-      queryClient.setQueryData(sessionKey, user);
-    },
+    onSuccess: (user) => startSession(queryClient, user),
   });
 }
 
@@ -62,10 +72,7 @@ export function useRegister() {
   const queryClient = useQueryClient();
   return useMutation<User, ApiError, RegisterBody>({
     mutationFn: (body) => api.register(body),
-    onSuccess: (user) => {
-      queryClient.removeQueries({ queryKey: sessionEndKey });
-      queryClient.setQueryData(sessionKey, user);
-    },
+    onSuccess: (user) => startSession(queryClient, user),
   });
 }
 
@@ -79,7 +86,9 @@ export function useLogout() {
   const navigate = useNavigate();
   return useMutation<void, ApiError>({
     mutationFn: () => api.logout(),
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Uma consulta da sessão em voo responderia depois e poderia ressuscitar a sessão que acaba de acabar.
+      await queryClient.cancelQueries({ queryKey: sessionKey });
       navigate(ROUTES.login, { replace: true });
       queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== sessionKey[0] });
       // O marcador entra DEPOIS da limpeza acima e ANTES de a sessão ir a null: a guarda lê o marcador no render que a sessão nula provoca.

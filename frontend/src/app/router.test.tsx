@@ -3,11 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import { errorResponse } from '../test/api';
-import { marina } from '../test/fixtures';
+import { marina, page } from '../test/fixtures';
 import { sessionKey } from './session';
 import { currentUrl, renderApp, renderRoutes } from '../test/render';
 import { routes } from './router';
-import type { RouteObject } from 'react-router-dom';
+import type { NonIndexRouteObject, RouteObject } from 'react-router-dom';
 import { server } from '../test/server';
 
 // A vitrine liga o Lenis e o ScrollTrigger, que precisam de layout, ResizeObserver e matchMedia: o jsdom não tem nada disso. Aqui só
@@ -244,6 +244,109 @@ describe('AppShell', () => {
     await queryClient.invalidateQueries({ queryKey: ['session'] });
 
     await waitFor(() => expect(currentUrl(router)).toBe('/entrar?next=%2Fcarteira'));
+  });
+});
+
+describe('quem entra depois', () => {
+  // Quebra se: quem entra herdar as consultas (o extrato) de quem saiu pelo 401 da consulta da sessão, que não passa pelo tratamento
+  // global de 401: a pessoa seguinte, na mesma aba, veria por instantes as linhas da anterior.
+  it('entrar descarta as consultas da pessoa anterior', async () => {
+    server.use(
+      http.post('*/auth/login', () => HttpResponse.json(marina)),
+      http.get('*/transaction', () => HttpResponse.json(page([], 0, 0, 5))),
+    );
+    const { queryClient } = renderApp('/entrar');
+    queryClient.setQueryData(['statement', 'received', 7], { pages: [], pageParams: [] }); // sobra da pessoa anterior
+    const person = userEvent.setup();
+
+    await person.type(await screen.findByLabelText('E-mail'), 'marina@arco.demo');
+    await person.type(screen.getByLabelText('Senha'), 'senha-correta-123');
+    await person.click(screen.getByRole('button', { name: 'Entrar na carteira' }));
+
+    await waitFor(() => expect(queryClient.getQueryData(['statement', 'received', 7])).toBeUndefined());
+  });
+
+  // Quebra se: a resposta VELHA da consulta da sessão (o pedido saiu sem cookie, antes do login) sobrescrever a sessão que o login
+  // acabou de gravar: a pessoa logada cairia em /entrar?next=%2Fcarteira.
+  it('a consulta da sessão em voo antes do login não derruba a sessão que o login gravou', async () => {
+    const { router, queryClient } = renderApp('/entrar');
+    const person = userEvent.setup({ delay: null });
+    await screen.findByRole('heading', { level: 1, name: 'Entrar na carteira' });
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get('*/users/me', async () => {
+        await gate;
+        return errorResponse(401, 'UNAUTHENTICATED');
+      }),
+      http.post('*/auth/login', () => HttpResponse.json(marina)),
+      http.get('*/transaction', () => HttpResponse.json(page([], 0, 0, 5))),
+    );
+    void queryClient.refetchQueries({ queryKey: sessionKey });
+
+    await person.type(screen.getByLabelText('E-mail'), 'marina@arco.demo');
+    await person.type(screen.getByLabelText('Senha'), 'senha-correta-123');
+    await person.click(screen.getByRole('button', { name: 'Entrar na carteira' }));
+    await waitFor(() => expect(currentUrl(router)).toBe('/carteira'));
+
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(currentUrl(router)).toBe('/carteira');
+    expect(queryClient.getQueryData(sessionKey)).toEqual(marina);
+  });
+});
+
+describe('quem sai', () => {
+  // Quebra se: a resposta VELHA da consulta da sessão (um 200 de antes do Sair) ressuscitar a sessão que acabou: a pessoa que saiu
+  // voltaria à carteira, de volta ao app, com o cookie já apagado.
+  it('a consulta da sessão em voo durante o Sair não ressuscita a sessão que acabou', async () => {
+    server.use(http.post('*/auth/logout', () => new HttpResponse(null, { status: 204 })));
+    const { router, queryClient } = renderApp('/carteira', { user: marina });
+    await mainNav();
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get('*/users/me', async () => {
+        await gate;
+        return HttpResponse.json(marina);
+      }),
+    );
+    void queryClient.refetchQueries({ queryKey: sessionKey });
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Sair' }));
+    await waitFor(() => expect(currentUrl(router)).toBe('/entrar'));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(currentUrl(router)).toBe('/entrar');
+    expect(queryClient.getQueryData(sessionKey)).toBeNull();
+  });
+});
+
+describe('tela que quebra', () => {
+  // Quebra se: uma exceção ao desenhar uma tela (ou o pacote da vitrine que dá 404 numa aba velha depois de um deploy) mostrar a
+  // página padrão do React Router, em inglês e com a pilha, sem saída.
+  it('mostra uma tela do Arco, em português, com um jeito de recarregar', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const Boom = () => {
+      throw new Error('quebrou ao desenhar');
+    };
+    const root = routes[0] as NonIndexRouteObject;
+    const tree: RouteObject[] = [{ ...root, children: [...(root.children ?? []), { path: '/quebra', element: <Boom /> }] }];
+
+    renderApp('/quebra', { user: marina, tree });
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Algo deu errado.' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Recarregar a página' })).toBeInTheDocument();
+    expect(screen.queryByText(/Unexpected Application Error/)).toBeNull();
+    quiet.mockRestore();
   });
 });
 
