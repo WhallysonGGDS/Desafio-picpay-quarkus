@@ -198,7 +198,18 @@ test('nenhum texto da vitrine fica cortado nem por cima de outro, em nenhum tama
           const width = Math.min(a.rect.right, b.rect.right) - Math.max(a.rect.left, b.rect.left);
           const height = Math.min(a.rect.bottom, b.rect.bottom) - Math.max(a.rect.top, b.rect.top);
           if (width > 4 && height > 0.3 * Math.min(a.rect.height, b.rect.height)) {
-            found.push(`sobreposto: "${a.text.slice(0, 24)}" × "${b.text.slice(0, 24)}"`);
+            // A mensagem leva a geometria e o ambiente: uma sobreposição que só aparece num computador (o servidor de CI, por exemplo)
+            // precisa dizer onde os textos estão, que fonte usam e quanta largura a janela tem, porque o relatório é tudo o que há.
+            const box = (rect: DOMRect) => `[${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}×${Math.round(rect.height)}]`;
+            const font = (node: Node) => {
+              const style = getComputedStyle(node.parentElement as Element);
+              return `${style.fontFamily.split(',')[0]} ${style.fontSize}`;
+            };
+            const loaded = Array.from(document.fonts).filter((face) => face.status !== 'unloaded').map((face) => `${face.family.replace(/"/g, '')}:${face.status}`);
+            found.push(
+              `sobreposto: "${a.text.slice(0, 24)}" × "${b.text.slice(0, 24)}" | ${box(a.rect)} ${font(a.node)} × ${box(b.rect)} ${font(b.node)} | janela ${innerWidth}×${innerHeight}, ` +
+                `barra de rolagem ${innerWidth - document.documentElement.clientWidth}px, dpr ${devicePixelRatio} | fontes ${loaded.join(' ')}`,
+            );
           }
         }
       }
