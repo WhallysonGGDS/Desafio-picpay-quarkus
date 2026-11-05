@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { StrictMode, type ReactNode } from 'react';
+import { lazy, StrictMode, Suspense, type ComponentType, type ReactNode } from 'react';
 import { createMemoryRouter, Link, RouterProvider, type RouteObject } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RouteFocus } from './RouteFocus';
@@ -42,12 +42,57 @@ function ScreenWithoutMain() {
   return <div>Uma tela sem área principal</div>;
 }
 
+function SlowScreen() {
+  return (
+    <main>
+      <h1>Tela que demorou</h1>
+    </main>
+  );
+}
+function SlowFormScreen() {
+  return (
+    <main>
+      <h1>Formulário que demorou</h1>
+      <input aria-label="Campo" autoFocus />
+    </main>
+  );
+}
+// A tela de espera é uma `main` ocupada, como o Splash do app, e a tela de verdade só chega quando o teste manda.
+function Waiting() {
+  return (
+    <main aria-busy="true">
+      <span className="sr-only">Carregando…</span>
+    </main>
+  );
+}
+function slow(Screen: ComponentType) {
+  let arrive: () => void = () => undefined;
+  const Lazy = lazy(
+    () =>
+      new Promise<{ default: ComponentType }>((resolve) => {
+        arrive = () => resolve({ default: Screen });
+      }),
+  );
+  return {
+    element: (
+      <Suspense fallback={<Waiting />}>
+        <Lazy />
+      </Suspense>
+    ),
+    arrive: () => arrive(),
+  };
+}
+const slowScreen = slow(SlowScreen);
+const slowFormScreen = slow(SlowFormScreen);
+
 const screens: RouteObject[] = [
   { path: '/a', element: <ScreenA /> },
   { path: '/b', element: <ScreenB /> },
   { path: '/sem-titulo', element: <ScreenWithoutTitle /> },
   { path: '/com-campo', element: <ScreenWithField /> },
   { path: '/sem-main', element: <ScreenWithoutMain /> },
+  { path: '/demora', element: slowScreen.element },
+  { path: '/demora-com-campo', element: slowFormScreen.element },
 ];
 
 function renderAt(initial: string, wrap: (children: ReactNode) => ReactNode = (children) => children) {
@@ -151,6 +196,49 @@ describe('RouteFocus', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Tela A' })).toHaveFocus();
     expect(scrollTo).not.toHaveBeenCalled();
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  // Quebra se: o foco for dado à tela de espera (a `main` do Suspense) e a rota for dada por tratada: quando a tela de verdade chega a
+  // espera some e o foco cai no corpo da página, sem que o leitor de tela ouça a tela nova (WCAG 2.4.3). Era o que acontecia ao
+  // clicar na marca, em /entrar, com o pacote da vitrine ainda por baixar.
+  it('uma tela que demora a chegar recebe o foco quando chega, e não a espera', async () => {
+    const router = renderAt('/a');
+
+    await go(router, '/demora');
+    expect(screen.queryByRole('heading', { name: 'Tela que demorou' })).toBeNull();
+    // Enquanto espera, nem a espera nem uma mudança qualquer da página (outra coisa que se atualiza) leva o foco à `main` ocupada.
+    await act(async () => {
+      document.body.append(document.createElement('aside'));
+    });
+    expect(document.body).toHaveFocus();
+    await act(async () => slowScreen.arrive());
+
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Tela que demorou' })).toHaveFocus());
+  });
+
+  // Quebra se: a espera da tela anterior continuar de olho e levar o foco para a tela que ela já não é: a pessoa saiu dali para
+  // outra, e a que demorou chegando não pode puxar nada.
+  it('quem sai de uma tela que ainda carrega não tem o foco puxado quando ela chega', async () => {
+    const router = renderAt('/a');
+    await go(router, '/demora');
+    await go(router, '/b');
+    expect(screen.getByRole('heading', { level: 1, name: 'Tela B' })).toHaveFocus();
+    (document.activeElement as HTMLElement).blur();
+
+    await act(async () => slowScreen.arrive());
+
+    expect(document.body).toHaveFocus();
+  });
+
+  // Quebra se: a tela que chegou depois já pôs o foco num campo dela (um formulário que começa pelo campo) e o foco for trocado pelo
+  // título: quem já começou a digitar perderia o lugar.
+  it('a tela que demorou e já pôs o foco num campo dela o mantém', async () => {
+    const router = renderAt('/a');
+    await go(router, '/demora-com-campo');
+
+    await act(async () => slowFormScreen.arrive());
+
+    expect(await screen.findByRole('textbox', { name: 'Campo' })).toHaveFocus();
   });
 
   it('uma tela sem área principal não quebra nem move o foco', async () => {

@@ -1,6 +1,18 @@
 import { useLayoutEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom';
 
+const BUSY_MAIN = 'main[aria-busy="true"]';
+
+function focusScreen() {
+  const main = document.querySelector<HTMLElement>('main');
+  if (!main || main.contains(document.activeElement)) return;
+  const target = main.querySelector<HTMLElement>('h1') ?? main;
+  // Título e `main` não recebem foco por conta própria: só por código, e sem entrar na ordem do Tab (o próximo Tab segue dali).
+  if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
+  // O foco não rola: no topo a rolagem já foi feita, e no "voltar" ela é do navegador.
+  target.focus({ preventScroll: true });
+}
+
 /**
  * Num app de uma página só, trocar de tela não é uma navegação para o navegador: o foco fica onde estava (no link da nav, ou
  * no corpo da página se o controle clicado saiu junto com a tela) e a rolagem fica na altura da tela anterior. Quem usa teclado
@@ -13,6 +25,9 @@ import { Outlet, useLocation, useNavigationType } from 'react-router-dom';
  *
  * A primeira tela fica com o navegador (nada é roubado de quem acabou de abrir o app). Só muda de tela quem muda de caminho:
  * uma busca ou uma âncora nova na mesma URL não mexe em nada.
+ *
+ * Uma tela que ainda está sendo baixada (a vitrine é um pacote à parte) aparece como uma `main` ocupada (`aria-busy`): o foco
+ * não vai a ela, que some quando a tela de verdade chega e o deixaria no corpo da página. Espera-se a tela de verdade.
  */
 export function RouteFocus() {
   const { pathname } = useLocation();
@@ -28,13 +43,18 @@ export function RouteFocus() {
 
     if (navigationType !== 'POP') window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 
-    const main = document.querySelector<HTMLElement>('main');
-    if (!main || main.contains(document.activeElement)) return;
-    const target = main.querySelector<HTMLElement>('h1') ?? main;
-    // Título e `main` não recebem foco por conta própria: só por código, e sem entrar na ordem do Tab (o próximo Tab segue dali).
-    if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
-    // O foco não rola: no topo a rolagem já foi feita acima, e no "voltar" ela é do navegador.
-    target.focus({ preventScroll: true });
+    if (!document.querySelector(BUSY_MAIN)) {
+      focusScreen();
+      return;
+    }
+    // A tela ainda carrega: o foco espera por ela. Sair para outra tela (a troca de caminho refaz o efeito) desliga a espera.
+    const waiting = new MutationObserver(() => {
+      if (document.querySelector(BUSY_MAIN)) return;
+      waiting.disconnect();
+      focusScreen();
+    });
+    waiting.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-busy'] });
+    return () => waiting.disconnect();
   }, [pathname, navigationType]);
 
   return <Outlet />;
