@@ -13,7 +13,13 @@ export function shouldRetryQuery(failureCount: number, error: unknown): boolean 
 }
 
 // Mutações nunca repetem sozinhas: reenviar uma transferência por conta própria seria cobrar duas vezes.
-const APP_DEFAULTS: DefaultOptions = { queries: { retry: shouldRetryQuery }, mutations: { retry: false } };
+// networkMode "always": sem rede, a chamada FALHA na hora (o fetch do navegador rejeita), em vez de ficar PAUSADA até a rede voltar. Pausada,
+// uma consulta ficava carregando para sempre sem dizer "sem conexão" e, pior, o envio de uma transferência ficava na fila e saía sozinho,
+// minutos depois, com a pessoa em outra tela (e o botão travado em "Autorizando…", sem o prazo de 20 s, que só conta depois de sair).
+const APP_DEFAULTS: DefaultOptions = {
+  queries: { retry: shouldRetryQuery, networkMode: 'always' },
+  mutations: { retry: false, networkMode: 'always' },
+};
 
 /**
  * O cliente do app. Os testes de tela o criam com os próprios padrões (nada repete sozinho), mas com o mesmo tratamento de

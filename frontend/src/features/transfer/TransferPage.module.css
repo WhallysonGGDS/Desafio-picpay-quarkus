@@ -63,6 +63,12 @@
   margin-left: calc(var(--sp-1) * -1);
 }
 
+/* O motivo, em corpo de texto discreto: a frase de cima já disse o que importa. */
+.hint {
+  max-width: 32rem;
+  color: var(--text-2);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .stage[data-direction] {
     animation: none;

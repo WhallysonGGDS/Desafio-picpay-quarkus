@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import type { ApiError } from '../../api/ApiError';
 import { api } from '../../api/client';
@@ -36,12 +36,38 @@ function viewOf(state: TransferState): View {
   return state.step;
 }
 
+/** A chave do envio: quem a conhece sabe se há um envio a caminho, mesmo depois de a tela que o fez ter saído do ar. */
+const TRANSFER_KEY = ['transfer'] as const;
+
 export function TransferPage() {
   useDocumentTitle('Transferir');
   const { user } = useSession();
+  // Um envio que a tela deixou a caminho (a pessoa saiu da tela e voltou): a requisição segue viva, e o formulário novo, vazio, deixaria
+  // enviar de novo sem a tela saber que o primeiro ainda não terminou (o back-end não tem idempotência). Só vale para o que já estava a
+  // caminho quando a tela abriu; o envio feito NESTA tela segue o próprio fluxo ("Autorizando…").
+  const inFlight = useIsMutating({ mutationKey: TRANSFER_KEY });
+  const [leftover, setLeftover] = useState(inFlight > 0);
+  useEffect(() => {
+    if (inFlight === 0) setLeftover(false);
+  }, [inFlight]);
+
   if (!user) return null;
   if (user.userType === 'MERCHANT') return <MerchantNotice />;
+  if (leftover) return <InFlightNotice />;
   return <TransferFlow balance={user.balance} />;
+}
+
+// Enquanto o envio anterior não termina, em vez do formulário, o motivo e o caminho para o resultado.
+function InFlightNotice() {
+  return (
+    <div className={styles.page}>
+      <h1 className={styles.title}>Um envio ainda está a caminho.</h1>
+      <p className={styles.hint}>Para não enviar duas vezes, espere ele terminar. O extrato mostra o resultado.</p>
+      <ButtonLink to={ROUTES.statement} variant="quiet" className={styles.quiet}>
+        Ver extrato
+      </ButtonLink>
+    </div>
+  );
 }
 
 // Lojas recebem; o back-end recusaria o envio de uma loja. Em vez do formulário, o motivo.
@@ -75,6 +101,7 @@ function TransferFlow({ balance }: { balance: string }) {
   }
 
   const transfer = useMutation<Transaction, ApiError, TransferBody>({
+    mutationKey: TRANSFER_KEY,
     mutationFn: (body) => api.transfer(body),
     // Estes dois rodam mesmo que a pessoa saia da tela com o envio a caminho: o saldo e o extrato têm de se atualizar.
     onSuccess: () => {

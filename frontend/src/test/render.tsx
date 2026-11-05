@@ -1,4 +1,4 @@
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider, type RouteObject } from 'react-router-dom';
 import type { User } from '../api/types';
@@ -9,8 +9,7 @@ import { mockSession, testQueryClient } from './api';
  * Monta o app inteiro (as rotas reais) numa rota inicial, sem registrar a sessão: quem chama controla a resposta de
  * GET /users/me (com server.use) antes de montar. Devolve o router (para conferir a URL) e o queryClient.
  */
-export function renderRoutes(route: string, tree: RouteObject[] = routes) {
-  const queryClient = testQueryClient();
+export function renderRoutes(route: string, tree: RouteObject[] = routes, queryClient: QueryClient = testQueryClient()) {
   const router = createMemoryRouter(tree, { initialEntries: [route] });
   const view = render(
     <QueryClientProvider client={queryClient}>
