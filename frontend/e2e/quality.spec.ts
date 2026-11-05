@@ -142,7 +142,7 @@ test.describe('movimento reduzido: nada anima', () => {
 // nunca podem ocupar o mesmo lugar. Mede-se o texto de verdade (o retângulo de cada trecho): a caixa de um elemento pode
 // passar da cena sem que nenhuma letra passe.
 test('nenhum texto da vitrine fica cortado nem por cima de outro, em nenhum tamanho de janela', async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const sizes = [
     [320, 568],
     [360, 640],
@@ -166,6 +166,21 @@ test('nenhum texto da vitrine fica cortado nem por cima de outro, em nenhum tama
     [1024, 768],
     [1366, 768],
     [1440, 600],
+    // A faixa estreita e de altura média: com o arco horizontal os dois textos do meio da cena 2 se tocavam ("…aconteceUm serviço…";
+    // o servidor de CI, com a fonte um pouco mais larga, reprovou em 800×600). 600×600 e 700×650 são da janela compacta quadrada;
+    // 760×600 e 820×600 seguem fixadas e precisam de folga. Os pares em volta das fronteiras (736 e 737 de largura, 768 e 769 de
+    // altura, a janela quadrada e a em pé) mostram que a regra não deixa uma janela de fora.
+    [600, 600],
+    [700, 650],
+    [760, 600],
+    [820, 600],
+    [992, 576],
+    [993, 576],
+    [992, 577],
+    [736, 720],
+    [737, 720],
+    [736, 769],
+    [735, 737],
   ] as const;
 
   const problems = (id: number) =>
@@ -234,23 +249,57 @@ test('nenhum texto da vitrine fica cortado nem por cima de outro, em nenhum tama
   expect(failures).toEqual([]);
 });
 
-// Celular deitado: a janela é estreita e baixa demais para as cenas fixadas (o texto de uma passava por cima do de outra). O
-// motor não as prende: ficam em fluxo, no estado final, sem o scroll. Girando o celular, a vitrine se refaz.
+// Janela em que as cenas fixadas não cabem (celular deitado, janela baixa, janela pequena e quadrada): é estreita e baixa demais
+// para as quatro decisões da cena 2 (o texto de uma passava por cima do de outra). O motor não as prende: ficam em fluxo, no estado
+// final, sem o scroll. Girando o celular, a vitrine se refaz.
 test('em janela compacta as cenas 2 e 3 não prendem e já mostram o fim', async ({ page }) => {
-  await page.setViewportSize({ width: 844, height: 390 });
-  await page.goto('/');
-  await expect(page.locator('[data-scene]')).toHaveCount(6);
+  // O celular deitado, o limite de cima da faixa baixa (992×576) e a faixa estreita e quadrada (600×600 e o limite 736×720).
+  for (const [width, height] of [
+    [844, 390],
+    [992, 576],
+    [600, 600],
+    [736, 720],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/');
+    await expect(page.locator('[data-scene]')).toHaveCount(6);
 
-  await expect(page.locator('.pin-spacer')).toHaveCount(0);
-  await expect(page.locator('[data-scene="2"]')).toHaveAttribute('data-progress', '1.000');
-  await expect(page.locator('[data-scene="3"]')).toHaveAttribute('data-progress', '1.000');
-  await expect(page.getByTestId('wallet-balance')).toHaveText('R$ 750,00');
+    await expect(page.locator('.pin-spacer'), `${width}×${height}`).toHaveCount(0);
+    await expect(page.locator('[data-scene="2"]')).toHaveAttribute('data-progress', '1.000');
+    await expect(page.locator('[data-scene="3"]')).toHaveAttribute('data-progress', '1.000');
+    await expect(page.getByTestId('wallet-balance')).toHaveText('R$ 750,00');
+  }
 
   // Em pé, a janela deixa de ser compacta: as duas voltam a prender, e o saldo volta ao começo.
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.pin-spacer')).toHaveCount(2);
   await expect(page.locator('[data-scene="3"]')).toHaveAttribute('data-progress', '0.000');
   await expect(page.getByTestId('wallet-balance')).toHaveText('R$ 1.000,00');
+});
+
+// A fronteira da regra: 1 px a mais de largura ou de altura e a janela comporta as cenas fixadas: elas prendem. O celular em pé
+// (360×640, 375×667, 320×640...) tem pouca altura e muita gente o usa: ele NÃO é compacto, e perder as cenas fixadas ali foi o
+// erro de uma primeira versão da regra. Sem isto a regra podia crescer e tirar a vitrine de um celular, de um notebook ou de um
+// iPad deitado (1024×768) sem que nada reprovasse.
+test('uma janela um pixel acima da fronteira, ou em pé, ainda prende as cenas 2 e 3', async ({ page }) => {
+  for (const [width, height] of [
+    [993, 576],
+    [992, 577],
+    [737, 720],
+    [736, 769],
+    [735, 737], // um pouco mais alta que larga: em pé, o arco é vertical e cabe
+    [360, 640],
+    [375, 667],
+    [412, 740],
+    [1024, 768],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/');
+    await expect(page.locator('[data-scene]')).toHaveCount(6);
+
+    await expect(page.locator('.pin-spacer'), `${width}×${height}`).toHaveCount(2);
+    await expect(page.locator('[data-scene="3"]')).toHaveAttribute('data-progress', '0.000');
+  }
 });
 
 // RF5: em 320 px (o menor celular) nenhuma tela rola na horizontal.

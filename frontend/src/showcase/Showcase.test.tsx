@@ -98,7 +98,7 @@ describe('as seis cenas', () => {
     const expected = [
       ['Quem envia?', 'Pessoas enviam. Lojas recebem.'],
       ['Há saldo?', 'Sem saldo, nada acontece.'],
-      ['Alguém autoriza?', 'Um serviço externo aprova ou recusa.'],
+      ['Alguém autoriza?', 'Um serviço externo decide.'],
       ['Os dois sabem?', 'Quem envia e quem recebe são avisados.'],
     ];
     items.forEach((item, index) => {

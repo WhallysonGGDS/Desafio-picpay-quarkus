@@ -68,7 +68,7 @@
 
 [data-orientation='horizontal'] [data-side='middle'] > .decision {
   left: 50%;
-  top: 1.6rem;
+  top: 1.2rem;
   text-align: center;
   margin-left: calc(min(15rem, 80vw) / -2);
 }
@@ -80,10 +80,10 @@
   text-align: right;
 }
 
-/* Janela estreita e baixa (celular deitado): a cena não prende (veja showcase.module.css). O palco vira uma coluna estreita e
-   alta, a proporção em que o arco fica vertical, com o texto de cada decisão à direita do nó, e a altura de que as quatro
-   precisam. */
-@media (max-width: 62rem) and (max-height: 36rem) {
+/* Janela em que as cenas fixadas não cabem (veja COMPACT_WINDOW_QUERY, em motion.ts): a cena não prende (veja
+   showcase.module.css). O palco vira uma coluna estreita e alta, a proporção em que o arco fica vertical, com o texto de cada
+   decisão à direita do nó, e a altura de que as quatro precisam. */
+@media (max-width: 62rem) and (max-height: 36rem), (max-width: 46rem) and (max-height: 48rem) and (min-aspect-ratio: 1/1) {
   .stage {
     width: min(100%, 28rem);
     min-height: 36rem;

@@ -142,7 +142,7 @@ test.describe('cenas', () => {
     const decisions: [string, string][] = [
       ['Quem envia?', 'Pessoas enviam. Lojas recebem.'],
       ['Há saldo?', 'Sem saldo, nada acontece.'],
-      ['Alguém autoriza?', 'Um serviço externo aprova ou recusa.'],
+      ['Alguém autoriza?', 'Um serviço externo decide.'],
       ['Os dois sabem?', 'Quem envia e quem recebe são avisados.'],
     ];
     for (const [question, answer] of decisions) {

@@ -24,10 +24,11 @@
   overflow: hidden;
 }
 
-/* Janela estreita e baixa (celular deitado): o palco de uma cena fixada não cabe numa janela assim, e o texto de uma passava
-   por cima do de outra. O motor não prende a cena (COMPACT_WINDOW_QUERY, em motion.ts: o texto da consulta é o mesmo, e um
-   teste confere): ela vira uma cena comum, em fluxo, com a altura do que tem dentro. */
-@media (max-width: 62rem) and (max-height: 36rem) {
+/* Janela em que as cenas fixadas não cabem (celular deitado, janela baixa, janela pequena e quadrada): o palco de uma cena
+   fixada não comporta as quatro decisões, e o texto de uma passava por cima do de outra. O motor não prende a cena
+   (COMPACT_WINDOW_QUERY, em motion.ts: o texto da consulta é o mesmo, e um teste confere; lá estão as duas faixas e o porquê de
+   cada uma): ela vira uma cena comum, em fluxo, com a altura do que tem dentro. */
+@media (max-width: 62rem) and (max-height: 36rem), (max-width: 46rem) and (max-height: 48rem) and (min-aspect-ratio: 1/1) {
   .scene[data-pinned] {
     height: auto;
     /* Sem corte na vertical (a cena cresce com o que tem dentro); na horizontal o `clip` corta a caixa de um item que passa da

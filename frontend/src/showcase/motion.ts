@@ -4,11 +4,20 @@ export const SCENE_PROGRESS_EVENT = 'sceneprogress';
 export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
 /**
- * Janela estreita e baixa (o celular deitado): as cenas fixadas supõem uma janela em que o palco inteiro cabe, e aqui o texto
- * de uma passaria por cima do de outra. O motor não as prende (elas ficam em fluxo, no estado final) e o CSS tira a altura
- * fixa. O mesmo texto está no `@media` de showcase.module.css; um teste confere que os dois são iguais.
+ * Janela em que as cenas fixadas não cabem: o texto de uma passaria por cima do de outra. O motor não as prende (elas ficam em
+ * fluxo, no estado final) e o CSS tira a altura fixa. São duas faixas:
+ *
+ * - até 62rem de largura (992 px) e 36rem de altura (576 px): o celular deitado e as janelas baixas, onde o palco não comporta
+ *   nem o arco horizontal (as quatro decisões se tocam) nem o vertical (precisa de uma coluna alta);
+ * - até 46rem de largura (736 px) e 48rem de altura (768 px), com a janela quadrada ou deitada (largura >= altura): com o palco
+ *   de uns 650 px o arco horizontal deixa menos de 190 px entre os dois textos do meio, para uns 170 px de texto cada um.
+ *   Quem está em pé (o celular, o tablet) fica de fora de propósito: o arco ali é vertical e cabe.
+ *
+ * O mesmo texto está no `@media` de showcase.module.css e no de scenes/Context.module.css; um teste confere que os três são
+ * iguais.
  */
-export const COMPACT_WINDOW_QUERY = '(max-width: 62rem) and (max-height: 36rem)';
+export const COMPACT_WINDOW_QUERY =
+  '(max-width: 62rem) and (max-height: 36rem), (max-width: 46rem) and (max-height: 48rem) and (min-aspect-ratio: 1/1)';
 
 function matches(query: string): boolean {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false;

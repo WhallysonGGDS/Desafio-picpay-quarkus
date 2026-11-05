@@ -11,7 +11,7 @@ export const COPY = {
     decisions: [
       { question: 'Quem envia?', answer: 'Pessoas enviam. Lojas recebem.' },
       { question: 'Há saldo?', answer: 'Sem saldo, nada acontece.' },
-      { question: 'Alguém autoriza?', answer: 'Um serviço externo aprova ou recusa.' },
+      { question: 'Alguém autoriza?', answer: 'Um serviço externo decide.' },
       { question: 'Os dois sabem?', answer: 'Quem envia e quem recebe são avisados.' },
     ],
   },
