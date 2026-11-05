@@ -86,6 +86,25 @@ async function bodyOf<D>(call: Promise<Outcome<D>>): Promise<D> {
  */
 export const TRANSFER_TIMEOUT_MS = 20_000;
 
+/**
+ * Prazo das demais chamadas (a sessão, o login, a busca, o extrato). O back-end responde em milissegundos; sem resposta aqui a
+ * chamada falha como NETWORK e a tela mostra o erro com "Tentar de novo", em vez de ficar na espera ou no esqueleto para
+ * sempre (a sessão não repete sozinha). É menor que o do envio: nenhuma delas espera o autorizador.
+ */
+export const REQUEST_TIMEOUT_MS = 15_000;
+
+// Roda a chamada com um prazo: passado o tempo, o fetch é abortado e a chamada falha como NETWORK. O relógio é desarmado ao fim,
+// com resposta ou erro, para não deixar um timer por chamada.
+async function within<T>(ms: number, call: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await call(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function createApi(baseUrl: string = window.location.origin): Api {
   const client = createClient<paths>({
     baseUrl,
@@ -99,35 +118,29 @@ export function createApi(baseUrl: string = window.location.origin): Api {
   return {
     async me() {
       try {
-        return await bodyOf(client.GET('/users/me'));
+        return await within(REQUEST_TIMEOUT_MS, (signal) => bodyOf(client.GET('/users/me', { signal })));
       } catch (error) {
         if (error instanceof ApiError && error.statusCode === 401) return null;
         throw error;
       }
     },
     async register(body) {
-      return bodyOf(client.POST('/auth/register', { body }));
+      return within(REQUEST_TIMEOUT_MS, (signal) => bodyOf(client.POST('/auth/register', { body, signal })));
     },
     async login(body) {
-      return bodyOf(client.POST('/auth/login', { body }));
+      return within(REQUEST_TIMEOUT_MS, (signal) => bodyOf(client.POST('/auth/login', { body, signal })));
     },
     async logout() {
-      await outcomeOf(client.POST('/auth/logout'));
+      await within(REQUEST_TIMEOUT_MS, (signal) => outcomeOf(client.POST('/auth/logout', { signal })));
     },
     async searchUsers(q) {
-      return bodyOf(client.GET('/users/search', { params: { query: { q } } }));
+      return within(REQUEST_TIMEOUT_MS, (signal) => bodyOf(client.GET('/users/search', { params: { query: { q } }, signal })));
     },
     async transfer(body) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), TRANSFER_TIMEOUT_MS);
-      try {
-        return await bodyOf(client.POST('/transaction', { body, signal: controller.signal }));
-      } finally {
-        clearTimeout(timer);
-      }
+      return within(TRANSFER_TIMEOUT_MS, (signal) => bodyOf(client.POST('/transaction', { body, signal })));
     },
     async statement({ direction, page, size }) {
-      return bodyOf(client.GET('/transaction', { params: { query: { direction, page, size } } }));
+      return within(REQUEST_TIMEOUT_MS, (signal) => bodyOf(client.GET('/transaction', { params: { query: { direction, page, size } }, signal })));
     },
   };
 }

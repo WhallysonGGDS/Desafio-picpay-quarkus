@@ -4,7 +4,7 @@ import { page, marina, rafael, summary, tx } from '../test/fixtures';
 import { errorResponse as backendError } from '../test/api';
 import { server } from '../test/server';
 import { ApiError } from './ApiError';
-import { createApi, TRANSFER_TIMEOUT_MS } from './client';
+import { createApi, REQUEST_TIMEOUT_MS, TRANSFER_TIMEOUT_MS } from './client';
 import type { RegisterBody } from './types';
 
 // baseUrl padrão = a origem da página (no jsdom, http://localhost:3000): o app e a API são a mesma origem.
@@ -259,6 +259,65 @@ describe('transfer: prazo', () => {
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ statusCode: 422, code: 'INSUFFICIENT_BALANCE', message: 'x' }), { status: 422, headers: { 'content-type': 'application/json' } }));
 
     await expect(api.transfer({ receiverId: 2, amount: '10.00' })).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+// Só o envio tinha prazo: a sessão (que não repete), a busca e o extrato, sem resposta, deixavam a tela de espera ou o esqueleto para
+// sempre, sem erro e sem "Tentar de novo".
+describe('demais chamadas: prazo', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const hanging = (request: Request) =>
+    new Promise<Response>((_, reject) => {
+      request.signal.addEventListener('abort', () => reject(new DOMException('abortado', 'AbortError')));
+    });
+
+  const calls: [string, () => Promise<unknown>][] = [
+    ['me', () => api.me()],
+    ['login', () => api.login({ email: 'marina@arco.demo', password: 'demo1234' })],
+    ['register', () => api.register(registration)],
+    ['logout', () => api.logout()],
+    ['searchUsers', () => api.searchUsers('rafael')],
+    ['statement', () => api.statement({ direction: 'all', page: 0, size: 20 })],
+  ];
+
+  // Quebra se: uma conexão pendurada deixar a chamada pendente para sempre, ou o prazo vencer cedo demais.
+  it.each(calls)('%s: sem resposta em 15 s falha como NETWORK, nem um instante antes', async (_name, call) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', hanging);
+    let outcome: unknown = 'pendente';
+    void call().then(
+      () => (outcome = 'resolvido'),
+      (error: unknown) => (outcome = error),
+    );
+
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS - 1);
+    expect(outcome).toBe('pendente');
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(outcome).toBeInstanceOf(ApiError);
+    expect(outcome).toMatchObject({ code: 'NETWORK', statusCode: 0 });
+  });
+
+  it('o prazo é de 15 s, menor que o do envio (que espera o autorizador e a trava de saldo)', () => {
+    expect(REQUEST_TIMEOUT_MS).toBe(15_000);
+    expect(REQUEST_TIMEOUT_MS).toBeLessThan(TRANSFER_TIMEOUT_MS);
+  });
+
+  // Quebra se: o relógio ficar armado depois da resposta (um timer pendurado por consulta).
+  it.each([
+    ['uma resposta', async () => new Response(JSON.stringify(summary(rafael)), { status: 200, headers: { 'content-type': 'application/json' } })],
+    ['um erro do servidor', async () => new Response(JSON.stringify({ statusCode: 500, code: 'INTERNAL_ERROR', message: 'x' }), { status: 500, headers: { 'content-type': 'application/json' } })],
+  ])('%s desarma o relógio', async (_name, respond) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', respond);
+
+    await api.me().catch(() => undefined);
 
     expect(vi.getTimerCount()).toBe(0);
   });
