@@ -22,7 +22,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -36,6 +39,8 @@ import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
@@ -231,5 +236,99 @@ class TransferApiTest {
         pool.shutdown();
         assertEquals("20.00", balanceOf(rich));
         assertEquals("80.00", balanceOf(dest));
+    }
+
+    // Quebra se: o autorizador voltar a ser chamado com os saldos TRAVADOS. A chamada externa leva até 4 s; com o lock retido, toda
+    // transferência das mesmas contas esperava em fila (uma por ida ao autorizador) e, passados os 10 s de LOCK_TIMEOUT do banco,
+    // virava 500: o front dizia "não deu para confirmar" para algo que nem tinha sido gravado.
+    @Test
+    void authorizerIsCalledWithoutHoldingTheBalanceLocks() throws Exception {
+        var stuck = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var first = new AtomicBoolean(true);
+        when(authorizer.authorize()).thenAnswer(invocation -> {
+            if (first.getAndSet(false)) { // só o 1º pedido fica preso lá dentro
+                stuck.countDown();
+                release.await(15, TimeUnit.SECONDS);
+            }
+            return Authorizations.granted();
+        });
+        var pool = Executors.newSingleThreadExecutor();
+        try {
+            var held = pool.submit(() -> transfer(a, b.id(), "10.00").statusCode());
+            assertTrue(stuck.await(10, TimeUnit.SECONDS), "o 1º pedido devia chegar ao autorizador");
+
+            // Com o 1º parado no autorizador, outro pedido das MESMAS contas tem de terminar sem esperar por ele.
+            assertEquals(201, transfer(a, b.id(), "20.00").statusCode());
+            assertFalse(held.isDone(), "o 1º ainda devia estar preso no autorizador");
+
+            release.countDown();
+            assertEquals(201, held.get(10, TimeUnit.SECONDS));
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
+        assertEquals("470.00", balanceOf(a)); // 500 - 10 - 20
+        assertEquals("130.00", balanceOf(b)); // 100 + 10 + 20
+    }
+
+    // Quebra se: o saldo não for conferido DE NOVO depois da autorização, já com os saldos travados. Dois pedidos que passaram juntos
+    // pela primeira conferência (e pelo autorizador) deixariam a conta negativa. A barreira dentro do autorizador garante que os dois
+    // estão lá ao mesmo tempo: é o que o teste acima de concorrência, sem barreira, só pegava por sorte.
+    @Test
+    void balanceIsRecheckedUnderTheLock_afterTheAuthorization() throws Exception {
+        var rich = TestUsers.registerWithBalance(UserType.COMMON, "100.00");
+        var dest = TestUsers.registerWithBalance(UserType.COMMON, "0.00");
+        var bothInside = new CyclicBarrier(2);
+        when(authorizer.authorize()).thenAnswer(invocation -> {
+            bothInside.await(10, TimeUnit.SECONDS);
+            return Authorizations.granted();
+        });
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            Callable<Integer> call = () -> transfer(rich, dest.id(), "80.00").statusCode();
+            var f1 = pool.submit(call);
+            var f2 = pool.submit(call);
+            assertEquals(List.of(201, 422), Stream.of(f1.get(30, TimeUnit.SECONDS), f2.get(30, TimeUnit.SECONDS)).sorted().toList());
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals("20.00", balanceOf(rich));
+        assertEquals("80.00", balanceOf(dest));
+    }
+
+    // Quebra se: os saldos deixarem de ser travados em ordem crescente de id. A→B e B→A ao mesmo tempo travariam um de cada lado e
+    // esperariam um pelo outro (o banco desfaz um dos dois com erro, ou os dois esperam o LOCK_TIMEOUT). Oito pedidos (quatro em cada
+    // sentido) são alinhados por uma barreira no instante de travar, e a repetição cobre a sorte do entrelaçamento: com dois pedidos só,
+    // a troca da ordem dos locks sobrevivia a cinco rodadas.
+    @Test
+    void crossedTransfers_neverDeadlock() throws Exception {
+        var x = TestUsers.registerWithBalance(UserType.COMMON, "1000.00");
+        var y = TestUsers.registerWithBalance(UserType.COMMON, "1000.00");
+        int perSide = 4;
+        var pool = Executors.newFixedThreadPool(2 * perSide);
+        try {
+            for (int round = 0; round < 10; round++) {
+                var allInside = new CyclicBarrier(2 * perSide);
+                reset(authorizer); // when(mock.m()) chama m(): sem o reset ele executaria a resposta da rodada anterior (e esperaria a barreira velha)
+                when(authorizer.authorize()).thenAnswer(invocation -> {
+                    allInside.await(20, TimeUnit.SECONDS);
+                    return Authorizations.granted();
+                });
+                List<java.util.concurrent.Future<Integer>> calls = new java.util.ArrayList<>();
+                for (int i = 0; i < perSide; i++) {
+                    calls.add(pool.submit(() -> transfer(x, y.id(), "3.00").statusCode()));
+                    calls.add(pool.submit(() -> transfer(y, x.id(), "1.00").statusCode()));
+                }
+                for (var call : calls) {
+                    assertEquals(201, call.get(60, TimeUnit.SECONDS), "rodada " + round);
+                }
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        // 10 rodadas x (4 x 3,00 de x para y e 4 x 1,00 de y para x)
+        assertEquals("920.00", balanceOf(x)); // 1000 - 10 x (12 - 4)
+        assertEquals("1080.00", balanceOf(y));
     }
 }
