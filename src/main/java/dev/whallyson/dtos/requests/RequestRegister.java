@@ -1,6 +1,7 @@
 package dev.whallyson.dtos.requests;
 
 import dev.whallyson.entitys.user.UserType;
+import dev.whallyson.validation.MaxUtf8Bytes;
 import dev.whallyson.validation.ValidDocument;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -16,7 +17,7 @@ public record RequestRegister(
         @NotBlank(message = "REQUIRED") @Size(max = 80, message = "TOO_LONG") String lastName,
         @NotBlank(message = "REQUIRED") String document,
         @NotBlank(message = "REQUIRED") @Email(message = "INVALID_EMAIL") @Size(max = 160, message = "TOO_LONG") String email,
-        @NotBlank(message = "REQUIRED") @Size(min = 8, max = 72, message = "PASSWORD_LENGTH") String password,
+        @NotBlank(message = "REQUIRED") @Size(min = 8, max = 72, message = "PASSWORD_LENGTH") @MaxUtf8Bytes(value = 72, message = "PASSWORD_LENGTH") String password,
         @NotNull(message = "REQUIRED") UserType userType) {
 
     public RequestRegister {

@@ -115,4 +115,13 @@ class StatementApiTest {
                 () -> assertFalse(raw.contains("balance")),
                 () -> assertFalse(raw.contains("@")));
     }
+
+    // Quebra se: um parâmetro que não é número voltar a responder 404 "recurso não encontrado" (a conversão do @QueryParam falha) em vez
+    // do 400 de validação que os fora de faixa (page=-1) já recebem.
+    @Test
+    void nonNumericOrHugePaging_is400() {
+        for (String query : List.of("page=abc", "size=abc", "size=99999999999", "page=1.5", "page=")) {
+            get(a, query).then().statusCode(400).body("code", org.hamcrest.Matchers.is("VALIDATION_ERROR"));
+        }
+    }
 }

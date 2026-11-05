@@ -88,6 +88,51 @@ class AuthApiTest {
         pool.shutdown();
     }
 
+    // Quebra se: uma chave repetida no JSON voltar a cair num erro de definição do record e responder 500 com corpo vazio, fora do contrato
+    // de erro (e, pior, a segunda "password" valer em silêncio no lugar da primeira). Achado do red team (r4).
+    @Test
+    void duplicateJsonKey_is400WithTheErrorBody() {
+        given().contentType(JSON).body("{\"email\":\"a@b.com\",\"password\":\"x\",\"password\":\"segredo123\"}").post("/auth/login")
+                .then().statusCode(400).body("code", is("VALIDATION_ERROR"));
+    }
+
+    // Quebra se: um "amount" repetido no corpo da transferência voltar a valer em silêncio (o último ganha) ou a cair em 500 sem corpo.
+    // A validação falha antes do autorizador e do banco: nenhum saldo muda.
+    @Test
+    void duplicateJsonKeyInTheTransferBody_is400_andNothingMoves() {
+        var from = TestUsers.registerWithBalance(UserType.COMMON, "500.00");
+        var to = TestUsers.register(UserType.COMMON);
+        given().cookie("arco_session", from.cookie()).contentType(JSON)
+                .body("{\"receiverId\":" + to.id() + ",\"amount\":\"1.00\",\"amount\":\"400.00\"}")
+                .post("/transaction").then().statusCode(400).body("code", is("VALIDATION_ERROR"));
+        assertEquals("500.00", TestUsers.balanceOf(from));
+        assertEquals("1000.00", TestUsers.balanceOf(to));
+    }
+
+    // Quebra se: o limite de 72 da senha voltar a contar CARACTERES. O BCrypt só lê os 72 primeiros BYTES: 40 letras "é" (80 bytes) e outra
+    // senha igual nos 72 primeiros bytes abririam a mesma conta, e a diferença no fim seria ignorada em silêncio.
+    @Test
+    void register_passwordLongerThan72Bytes_is400() {
+        var body = new java.util.HashMap<>(registerBody(TestDocuments.email(), TestDocuments.cpf(), "COMMON"));
+        body.put("password", "é".repeat(40));
+        given().contentType(JSON).body(body).post("/auth/register").then().statusCode(400)
+                .body("fieldErrors.field", hasItem("password")).body("fieldErrors.code", hasItem("PASSWORD_LENGTH"));
+        body.put("password", "é".repeat(36)); // 72 bytes exatos: vale
+        given().contentType(JSON).body(body).post("/auth/register").then().statusCode(201);
+    }
+
+    // Quebra se: letras em volta do documento voltarem a passar (só os dígitos eram conferidos): "CPF: 529.982.247-25 ok" era gravado como se
+    // fosse o CPF. A busca de destinatário já recusava o mesmo texto.
+    @Test
+    void register_documentWithLettersAround_is400() {
+        var body = new java.util.HashMap<>(registerBody(TestDocuments.email(), TestDocuments.cpf(), "COMMON"));
+        body.put("document", "CPF: 529.982.247-25 ok");
+        given().contentType(JSON).body(body).post("/auth/register").then().statusCode(400).body("fieldErrors.field", hasItem("document"));
+        body.put("document", "529.982.247-25"); // a máscara comum continua valendo
+        body.put("email", TestDocuments.email());
+        given().contentType(JSON).body(body).post("/auth/register").then().statusCode(201);
+    }
+
     @Test
     void login_is200_caseInsensitive_andSetsCookie() {
         var s = TestUsers.register(UserType.COMMON);
