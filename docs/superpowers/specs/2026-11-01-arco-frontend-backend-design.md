@@ -2,7 +2,7 @@
 
 Data: 2026-11-01
 Branch: `ccr-2f5e7339-pybi0z`
-Status: aguardando revisão do autor
+Status: entregue na PR #2 (os desvios e as decisões estão no diário do plano B)
 
 ## 1. Contexto e objetivo
 

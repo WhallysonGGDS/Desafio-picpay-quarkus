@@ -109,7 +109,7 @@ O projeto **não** possui: atualização ou exclusão de usuários, recuperaçã
 
 ## Regras de negócio
 
-**Cadastro.** O e-mail é guardado em minúsculas e o documento só com dígitos, e a unicidade vale sobre esses valores (então `ANA@x.com` e `ana@x.com`, ou `529.982.247-25` e `52998224725`, são a mesma conta). O documento precisa ser um **CPF válido** para `COMMON` e um **CNPJ válido** para `MERCHANT` (conferência dos dígitos verificadores). A senha tem de 8 a 72 caracteres e é guardada com BCrypt. O saldo inicial é definido pelo servidor, nunca pelo cliente.
+**Cadastro.** O e-mail é guardado em minúsculas e o documento só com dígitos, e a unicidade vale sobre esses valores (então `ANA@x.com` e `ana@x.com`, ou `529.982.247-25` e `52998224725`, são a mesma conta). O documento precisa ser um **CPF válido** para `COMMON` e um **CNPJ válido** para `MERCHANT` (conferência dos dígitos verificadores); aceita dígitos e a pontuação da máscara (`.`, `-`, `/` e espaços), e qualquer letra é recusada. A senha tem no mínimo 8 caracteres e no máximo **72 bytes em UTF-8** (o limite do BCrypt, que guarda a senha): quem usa acentos ou emojis tem menos que 72 caracteres, e o formulário conta os bytes como o servidor. O saldo inicial é definido pelo servidor, nunca pelo cliente.
 
 **Transferência.** As regras são verificadas nesta ordem:
 
@@ -124,9 +124,10 @@ O projeto **não** possui: atualização ou exclusão de usuários, recuperaçã
 
 Comportamentos adicionais:
 
-- **Atomicidade.** `TransactionService.transfer` é `@Transactional`. Uma exceção em qualquer etapa provoca *rollback*, e nenhum saldo é alterado.
+- **Atomicidade.** Débito, crédito e registro são gravados numa transação só (`QuarkusTransaction.requiringNew`). Uma exceção em qualquer etapa dela provoca *rollback*, e nenhum saldo é alterado.
+- **O autorizador é chamado fora da transação.** As regras 2 a 5 são conferidas primeiro, numa transação curta; o autorizador só é consultado depois, sem transação aberta e sem trava de saldo, para que uma resposta lenta dele (até 3 s) não segure conexão do banco nem as outras transferências da mesma conta. Aprovada a transferência, o serviço trava os saldos e **confere as regras de novo** (o saldo pode ter mudado enquanto o autorizador respondia) antes de gravar.
 - **Remetente é sempre o usuário logado.** O corpo da requisição não tem campo de remetente; um `senderId` enviado é ignorado.
-- **Concorrência.** Os dois saldos são lidos com *lock* pessimista de escrita (`PESSIMISTIC_WRITE`), em ordem crescente de id para evitar deadlock. Duas transferências simultâneas do mesmo remetente nunca deixam a conta negativa.
+- **Concorrência.** Na gravação os dois saldos são lidos com *lock* pessimista de escrita (`PESSIMISTIC_WRITE`), em ordem crescente de id para evitar deadlock, e o banco espera até 10 s por esse lock (`LOCK_TIMEOUT`). Duas transferências simultâneas do mesmo remetente nunca deixam a conta negativa, e transferências cruzadas (A→B e B→A) não travam uma à outra.
 - **Autorizador com falha fechada.** Só uma resposta que afirma `data.authorization == true` libera a transferência. `403` ou `authorization: false` é recusa; falha de rede, *timeout* e `5xx` são indisponibilidade. Em nenhum caso a transferência acontece sem aprovação.
 - **Notificação após o commit.** Os avisos saem depois que a transferência foi gravada, fora da requisição e fora da transação. A transação nasce com os dois avisos em `PENDING`; cada um vira `SENT` ou `FAILED` (3 tentativas, 200 ms entre elas). **Falha de aviso nunca desfaz a transferência.**
 - **Diferença entre perfis.** O perfil só interfere no **envio**. Um lojista pode receber normalmente, mas qualquer tentativa de enviar é recusada antes da consulta ao autorizador.
@@ -139,13 +140,14 @@ Comportamentos adicionais:
 
 | Tema | Como funciona |
 | :--- | :--- |
-| Sessão | JWT em um cookie **`arco_session`**: `HttpOnly` (o JavaScript nunca vê o token), `SameSite=Strict`, `Path=/`, validade de 1 hora e `Secure` fora dos perfis `dev` e `test`. O token carrega só o id do usuário (`sub`); o perfil sempre vem do banco. |
+| Sessão | JWT em um cookie **`arco_session`**: `HttpOnly` (o JavaScript nunca vê o token), `SameSite=Strict`, `Path=/`, validade de 1 hora e `Secure` fora dos perfis `dev` e `test`. O token carrega o id do usuário (`sub`) e a **época** da execução que o emitiu (um UUID gerado a cada início); o perfil sempre vem do banco. |
 | Autenticação preguiçosa | `quarkus.http.auth.proactive=false`. Um cookie velho ou inválido enviado a uma rota **pública** (`/auth/login`, `/auth/register`, `/auth/logout`) é ignorado, e quem tem o cookie vencido consegue entrar de novo. Em rota protegida vira `401 UNAUTHENTICATED`. |
 | CSRF | `SameSite=Strict` mais a exigência de `Content-Type: application/json` em **todo** `POST`, inclusive o logout sem corpo. Um `<form>` de outro site não consegue enviar esse tipo de conteúdo. |
 | Senha | BCrypt. Nenhuma resposta contém `password` ou `passwordHash`: as entidades nunca são serializadas, só DTOs. |
 | Login | E-mail desconhecido e senha errada respondem igual (`401 INVALID_CREDENTIALS`), com custo de BCrypt parecido, para não revelar quais contas existem. |
 | Busca de destinatário | Correspondência **exata** (nunca por prefixo), no máximo um resultado, nunca o próprio usuário, e só `id`, nome, tipo e documento mascarado. Sem saldo e sem e-mail. |
-| Chaves do JWT | Nenhuma chave fica no repositório. Se nada for configurado, um par RSA **efêmero** é gerado a cada inicialização (as sessões caem a cada reinício). Em produção, defina as chaves por variável de ambiente (veja [Configuração](#chaves-do-jwt-em-produção)). |
+| Sessão e reinício | O banco é em memória e recomeça vazio a cada início, com os ids de novo a partir de 1. Por isso **uma sessão só vale na execução que a criou**: depois de um reinício o cookie antigo é recusado (`401`), mesmo com as chaves de produção fixas. Sem isso o cookie de uma pessoa abriria, durante a hora de validade, a conta de quem recebesse o mesmo id depois do reinício. |
+| Chaves do JWT | Nenhuma chave fica no repositório. Se nada for configurado, um par RSA **efêmero** é gerado a cada inicialização. Em produção, defina as **duas** chaves por variável de ambiente, com o conteúdo do PEM (veja [Configuração](#chaves-do-jwt-em-produção)): o servidor **se recusa a subir** com só uma delas ou com uma chave por caminho de arquivo, porque assinaria com uma chave e verificaria com outra, e o login devolveria `200` enquanto toda rota protegida responderia `401`, sem nenhum erro no log. |
 
 ---
 
@@ -192,9 +194,9 @@ flowchart LR
 | Entidades | `entitys` | Modelo persistente com Hibernate ORM + Panache no padrão *Active Record* (`PanacheEntityBase`). Nunca saem pela API. |
 | DTOs | `dtos` | Corpos de requisição e resposta, contratos dos serviços externos e o formato padrão de erro. |
 | Erros | `exceptions` | `ErrorCode` (status e código estável) e `ApiException`. |
-| Validação | `validation` | CPF/CNPJ por dígito verificador, máscara de documento e a constraint `@ValidDocument`. |
+| Validação | `validation` | CPF/CNPJ por dígito verificador, máscara de documento e as constraints `@ValidDocument` e `@MaxUtf8Bytes` (a senha, em bytes). |
 | Integrações | `mocks` | Interfaces MicroProfile REST Client para o autorizador e para o serviço de notificação. |
-| Infraestrutura | `infra` | `ExceptionMapper`s, dados de demonstração e, em `infra/security`, token, cookie e usuário atual. |
+| Infraestrutura | `infra` | `ExceptionMapper`s, a configuração do Jackson (chave duplicada no JSON é `400`), o `SpaFallback` (devolve o `index.html` nas rotas do front, e o cache dele), dados de demonstração e, em `infra/security`, token, cookie, época da sessão, usuário atual e a guarda das chaves do JWT. |
 
 ### Tratamento de exceções
 
@@ -223,19 +225,25 @@ sequenceDiagram
 
     C->>TC: POST /transaction (cookie de sessão)
     TC->>TS: transfer(idDoCookie, corpo)
-    Note over TS,DB: início da transação (@Transactional)
-    TS->>DB: trava os dois saldos (ordem crescente de id)
-    TS->>TS: lojista? saldo suficiente?
+    Note over TS,DB: 1. confere as regras (transação curta, sem trava)
+    TS->>DB: lê remetente e destinatário
+    alt regra violada
+        TS-->>C: 403, 404 ou 422 · nada foi gravado e o autorizador nem foi chamado
+    end
+    Note over TS,AUT: 2. o autorizador é chamado sem transação aberta e sem trava de saldo
     TS->>AUT: GET /api/v2/authorize
     alt recusado (403 ou authorization=false)
         AUT-->>TS: negado
-        TS-->>C: 422 AUTHORIZATION_DENIED · rollback
+        TS-->>C: 422 AUTHORIZATION_DENIED
     else indisponível (rede, timeout, 5xx)
-        TS-->>C: 503 AUTHORIZER_UNAVAILABLE · rollback
+        TS-->>C: 503 AUTHORIZER_UNAVAILABLE
     else autorizado
         AUT-->>TS: authorization = true
+        Note over TS,DB: 3. transação nova: início
+        TS->>DB: trava os dois saldos (ordem crescente de id)
+        TS->>TS: confere as regras de novo (o saldo pode ter mudado)
         TS->>DB: debita, credita e grava a transação (avisos PENDING)
-        Note over TS,DB: commit
+        Note over TS,DB: commit (qualquer exceção desfaz tudo)
         TS-->>TC: Transaction
         TC-->>C: 201 Created
         TS->>ND: TransferCompleted (só depois do commit)
@@ -265,7 +273,7 @@ A identidade é **escura, mínima e cinematográfica**: preto e azul-marinho, um
 | `/transferir` | Logados | Envio em três passos: para quem, quanto e confirmar. Lojas veem "Lojas recebem, não enviam." |
 | `/extrato` | Logados | Movimentações paginadas, com filtro por enviadas e recebidas |
 
-Sem sessão, uma rota privada leva a `/entrar?next=…`, e o login volta ao destino pedido (só caminhos do próprio app: `//evil.com` e `/\evil.com` são ignorados). Quando a sessão acaba (1 hora), **qualquer** chamada que receba `401` leva ao login, e o cache das consultas é descartado.
+Sem sessão, uma rota privada leva a `/entrar?next=…`, e o login volta ao destino pedido (só caminhos do próprio app: `//evil.com` e `/\evil.com` são ignorados). Quando a sessão acaba (1 hora), **qualquer** chamada que receba `401` leva ao login, e o cache das consultas é descartado. Quem entra (ou se cadastra) na mesma aba não herda o cache nem a consulta da sessão de quem saiu, e uma resposta que chega atrasada depois do **Sair** não ressuscita a sessão: ao sair, as consultas em andamento são canceladas e a guarda das rotas privadas manda ao login sem esperar.
 
 ### O envio
 
@@ -273,6 +281,9 @@ Sem sessão, uma rota privada leva a `/entrar?next=…`, e o login volta ao dest
 - **O valor é dinheiro de verdade**: texto no formato da API (`"250.00"`) e centavos inteiros em `bigint` na tela, nunca ponto flutuante.
 - **Nunca reenvia no escuro.** Se não dá para saber se o dinheiro saiu (a rede caiu depois do envio, resposta `5xx` ou 20 s sem resposta), a tela diz "Não deu para confirmar" e leva ao extrato: não há "Tentar de novo" e nada é reenviado sozinho. A primeira tentativa pode ter chegado e, como o back-end não tem [idempotência](#limitações-conhecidas), o dinheiro sairia duas vezes. A recusa do autorizador, ao contrário, é segura (nada foi gravado) e oferece "Tentar de novo".
 - **Dois cliques não enviam duas vezes:** o envio é travado de forma síncrona enquanto há uma tentativa a caminho.
+- **Sem rede, o envio falha na hora** como "Não deu para confirmar" (o navegador diz que está offline) em vez de ficar pausado em "Autorizando…" e sair sozinho minutos depois, quando a rede voltasse, com a pessoa em outra tela. Nada é enviado na volta da rede.
+- **Com um envio a caminho, o formulário não reabre.** Quem sai da tela de envio e volta a ela antes de o servidor responder vê "Um envio ainda está a caminho.", com o atalho para o extrato; o formulário só volta quando o envio termina. Sem isso a pessoa refazia e reenviava, e o servidor recebia dois envios.
+- **Prazos:** o envio espera até 20 s (o autorizador tem 3 s e a trava de saldo, 10 s); o login, o cadastro, a sessão, a busca e o extrato, até 15 s. Passado o prazo, a chamada vira "sem conexão" e a tela oferece "Tentar de novo", em vez de ficar na espera para sempre.
 
 ### A vitrine
 
@@ -282,17 +293,18 @@ Seis cenas, uma história: **Impacto** (a abertura), **Contexto** (as quatro dec
 | :--- | :--- |
 | `prefers-reduced-motion` | Sem rolagem suave, sem cenas fixas, nenhuma animação nem atraso: a vitrine inteira, no estado final e legível |
 | Celular em pé | Composição própria: o arco do contexto vira vertical, com o texto à direita dos nós |
-| Janela estreita e baixa (celular deitado) | As cenas fixadas não prendem: ficam em fluxo e já no estado final, sem texto sobreposto |
+| Janela estreita e de pouca altura (celular deitado, ou uma janela de computador de até 992×768) | As cenas fixadas não prendem: ficam em fluxo e já no estado final, sem texto sobreposto. O arco horizontal precisa de uns 900 px de palco para as quatro decisões, e o vertical, de uma coluna alta que essa janela não tem |
 
 ### Qualidade
 
 Tudo isto é conferido por testes automáticos (veja [Testes do front-end](#testes-do-front-end)):
 
-- **Acessibilidade:** axe-core (WCAG 2.0 A e AA, 2.1 AA) em todas as telas, nos três passos do envio e na vitrine com movimento reduzido; contraste AA dos tokens; foco sempre visível e nunca coberto pela barra de navegação do celular.
-- **Largura:** nenhuma tela rola na horizontal a 320 px, e nenhum texto da vitrine fica cortado nem por cima de outro em janelas de 320×568 a 1440×900.
+- **Acessibilidade:** axe-core (WCAG 2.0 A e AA, 2.1 AA) em todas as rotas, nos três passos do envio e na vitrine com movimento reduzido; contraste AA dos tokens; foco visível, e o do botão "Enviar" não fica atrás da barra de navegação do celular (a raiz também reserva `scroll-padding-bottom` para os outros controles).
+- **Largura:** nenhuma tela rola na horizontal a 320 px, e nenhum texto da vitrine fica cortado nem por cima de outro em 33 tamanhos de janela (do celular de 320×568 ao notebook de 1366×768), incluindo a faixa estreita e de altura média (600×600, 760×600, 800×600…) e os dois lados de cada fronteira da janela compacta.
 - **Tamanho e cache:** o pacote de entrada tem cerca de **127 kB** em gzip (orçamento: 170 kB) e o da vitrine, cerca de **55 kB** (orçamento: 70 kB); o GSAP não entra no de entrada. O servidor comprime (gzip) o HTML, os pacotes e o JSON, serve os pacotes de nome-hash com cache longo (`immutable`) e o `index.html` com `no-cache`, para um novo build chegar na hora. Nenhuma requisição sai da própria origem.
 - **Títulos:** cada tela tem o seu (`Carteira | Arco`, `Extrato | Arco`…), que é o que a aba, o histórico e o leitor de tela mostram ao trocar de tela.
-- **Foco e rolagem:** ao trocar de tela o foco vai ao título da nova (à `main`, se não houver título) e a página volta ao topo, como numa página nova; o "voltar" do navegador mantém a rolagem que ele guardou, e a primeira tela nunca recebe foco à força. Sem isso o foco ficava no link da nav e o cadastro aberto pelo fim da vitrine aparecia rolado até o fim.
+- **Foco e rolagem:** ao trocar de tela o foco vai ao título da nova (à `main`, se não houver título) e a página volta ao topo, como numa página nova; o "voltar" do navegador mantém a rolagem que ele guardou, e a primeira tela que se abre não recebe foco à força (a tela do envio põe o foco no próprio título a cada passo, e a rota-layout respeita o foco que a tela já pôs). Uma tela que ainda está sendo baixada (a vitrine é um pacote à parte) não recebe o foco enquanto mostra a espera: ele vai à tela de verdade quando ela chega. Sem isso o foco ficava no link da nav e o cadastro aberto pelo fim da vitrine aparecia rolado até o fim.
+- **Erro de tela:** se uma tela quebrar ao desenhar (ou o pacote da vitrine não carregar numa aba velha, depois de uma nova versão), aparece uma tela do Arco em português, com "Recarregar" e o caminho para a carteira, em vez da página padrão do React Router, em inglês e com a pilha.
 - **Cabeçalhos de segurança:** em produção o servidor manda `Content-Security-Policy` (só a própria origem: nenhum script, estilo, imagem ou fonte de fora, nenhum `eval`), `X-Frame-Options: DENY` e, em qualquer perfil, `X-Content-Type-Options: nosniff` e `Referrer-Policy`. O teste de integração confere a política inteira no JAR e o de navegador prova que ela é aplicada (script embutido, `eval`, estilo embutido e conexão a outra origem são barrados; nem a própria origem enquadra o app) e que o app inteiro, da vitrine ao envio, roda sem uma única violação.
 
 ### Rodar e construir
@@ -509,7 +521,7 @@ A configuração está em `src/main/resources/application.properties`. Qualquer 
 | Propriedade | Valor | Finalidade |
 | :--- | :--- | :--- |
 | `quarkus.datasource.db-kind` | `h2` | Tipo de banco de dados |
-| `quarkus.datasource.jdbc.url` | `jdbc:h2:mem:picpay;INIT=SET LOCK_TIMEOUT 10000` | Banco H2 em memória (os dados se perdem ao encerrar). O `LOCK_TIMEOUT` de 10 s faz uma transferência esperar o lock de saldo de outra, que pode estar aguardando o autorizador |
+| `quarkus.datasource.jdbc.url` | `jdbc:h2:mem:picpay;DB_CLOSE_DELAY=-1;INIT=SET LOCK_TIMEOUT 10000` | Banco H2 em memória (os dados se perdem ao encerrar). O `DB_CLOSE_DELAY=-1` o mantém vivo enquanto a JVM viver: sem ele o H2 apaga um banco `mem:` quando a última conexão fecha, e o pool fecha as ociosas em 5 minutos, de modo que um app parado voltava com o banco vazio. O `LOCK_TIMEOUT` de 10 s faz uma transferência esperar o lock de saldo de outra transferência da mesma conta (que só dura o trabalho do banco: o autorizador é chamado antes, sem trava) |
 | `quarkus.datasource.username` / `password` | `sa` / *(vazio)* | Credenciais padrão de um H2 em memória local, não de um ambiente real |
 | `quarkus.hibernate-orm.database.generation` | `drop-and-create` | Recria o esquema a cada inicialização |
 | `quarkus.hibernate-orm.dialect` | `org.hibernate.dialect.H2Dialect` | Dialeto SQL |
@@ -521,7 +533,11 @@ A configuração está em `src/main/resources/application.properties`. Qualquer 
 | `mp.jwt.token.cookie` | `arco_session` | Nome do cookie que carrega o JWT |
 | `mp.jwt.verify.issuer` | `arco` | Emissor esperado no token |
 | `quarkus.http.auth.proactive` | `false` | Autenticação preguiçosa (veja [Sessão e segurança](#sessão-e-segurança)) |
-| `quarkus.smallrye-openapi.store-schema-directory` | `target/openapi` | Onde o esquema OpenAPI é gravado no build |
+| `quarkus.smallrye-openapi.store-schema-directory` | `target/openapi` | Onde o esquema OpenAPI é gravado no build (o recurso de sonda dos testes fica fora dele: `%test.mp.openapi.scan.exclude.classes`) |
+| `quarkus.quinoa.*` | `ui-dir=frontend`, `build-dir=dist`, `enable-spa-routing=true`, `ignored-path-prefixes=/auth,/users,/transaction,/hello,/q` | O Quinoa constrói o front no Maven e o serve na mesma origem da API; o que é da API nunca vira rota do front. `%dev` usa o Vite na porta 5173, e `%test` desliga o Quinoa. Para compilar só o back-end: `-Dquarkus.quinoa=false` |
+| `quarkus.http.enable-compression` | `true` | Comprime (gzip) o HTML, os pacotes e o JSON: o orçamento do bundle é medido em gzip |
+| `quarkus.http.header.*` | `nosniff` e `Referrer-Policy` em todo perfil; `X-Frame-Options` e `Content-Security-Policy` só em `%prod` | Cabeçalhos de segurança (veja [Sessão e segurança](#sessão-e-segurança) e as limitações) |
+| `quarkus.log.category."org.hibernate.engine.jdbc.spi.SqlExceptionHelper".level` | `OFF` | A mensagem do H2 numa violação de unicidade traz o e-mail ou o CPF; o `409` já é tratado e uma falha inesperada continua no log |
 
 ### Serviços externos
 
@@ -532,11 +548,11 @@ Os clientes REST são configurados por chave (`@RegisterRestClient(configKey = .
 | `AuthorizationTransaction` (`GET`) | `authorizer` | `https://util.devi.tools/api/v2/authorize` | 1 s / **3 s** |
 | `SendNotification` (`POST`) | `notifier` | `https://util.devi.tools/api/v1/notify` | 1 s / 2 s |
 
-O timeout do autorizador é curto de propósito: os locks de saldo ficam retidos enquanto ele responde. A URL de cada um é `quarkus.rest-client.<chave>.url`.
+O timeout do autorizador é curto de propósito: o pedido não espera à toa por um serviço lento. Nenhum lock de saldo nem transação fica aberto durante a chamada (ele é consultado entre a conferência das regras e a gravação), então uma resposta lenta atrasa só quem a pediu. A URL de cada um é `quarkus.rest-client.<chave>.url`.
 
 ### Chaves do JWT em produção
 
-Sem configuração, a aplicação gera um par RSA efêmero na inicialização (e registra um aviso). Em produção, defina o **conteúdo** PEM das chaves por variável de ambiente; elas prevalecem sobre a chave efêmera, e as sessões passam a sobreviver a reinícios:
+Sem configuração, a aplicação gera um par RSA efêmero na inicialização (e registra um aviso). Em produção, defina o **conteúdo** PEM das **duas** chaves por variável de ambiente; elas prevalecem sobre a chave efêmera. Com só uma das duas, ou com a chave por caminho de arquivo (`*.location`), a aplicação **não sobe** e diz o que corrigir. As sessões **não** sobrevivem a um reinício nem com chaves fixas (veja [Sessão e segurança](#sessão-e-segurança)): o banco é em memória, e um token antigo apontaria para outra conta. As chaves fixas servem para manter a mesma assinatura entre execuções e entre instâncias.
 
 ```bash
 # gera um par (chave privada em PKCS#8)
@@ -598,9 +614,9 @@ Cria a conta e já inicia a sessão (o cookie vem no `Set-Cookie`). O saldo inic
 | :--- | :--- | :--- |
 | `firstName` | `string` | Obrigatório, até 80 caracteres |
 | `lastName` | `string` | Obrigatório, até 80 caracteres |
-| `document` | `string` | CPF (`COMMON`) ou CNPJ (`MERCHANT`) válido, com ou sem pontuação. Único |
+| `document` | `string` | CPF (`COMMON`) ou CNPJ (`MERCHANT`) válido, com ou sem a pontuação da máscara (`.`, `-`, `/`, espaços); uma letra é recusada. Único |
 | `email` | `string` | Formato válido, até 160 caracteres. Único |
-| `password` | `string` | De 8 a 72 caracteres |
+| `password` | `string` | No mínimo 8 caracteres e no máximo 72 **bytes** em UTF-8 (o limite do BCrypt) |
 | `userType` | `string` | `COMMON` ou `MERCHANT` |
 
 Espaços nas pontas dos textos são removidos (menos na senha).
@@ -640,7 +656,7 @@ Set-Cookie: arco_session=<jwt>;Version=1;Path=/;Max-Age=3600;HttpOnly;SameSite=S
 
 | Situação | Status | `code` |
 | :--- | :---: | :--- |
-| Campo ausente, formato inválido, senha curta, CPF/CNPJ inválido ou de outro tipo | `400` | `VALIDATION_ERROR`, com `fieldErrors` (`REQUIRED`, `TOO_LONG`, `INVALID_EMAIL`, `PASSWORD_LENGTH`, `INVALID_DOCUMENT`) |
+| Campo ausente, formato inválido, senha curta ou acima de 72 bytes, CPF/CNPJ inválido ou de outro tipo, ou o mesmo campo repetido no JSON | `400` | `VALIDATION_ERROR`, com `fieldErrors` (`REQUIRED`, `TOO_LONG`, `INVALID_EMAIL`, `PASSWORD_LENGTH`, `INVALID_DOCUMENT`) |
 | E-mail já cadastrado | `409` | `DUPLICATE_EMAIL` |
 | Documento já cadastrado | `409` | `DUPLICATE_DOCUMENT` |
 
@@ -933,18 +949,22 @@ Os testes **nunca** chamam o `util.devi.tools`: os dois clientes REST externos s
 | `ErrorModelTest` | Corpo de erro único: `404`/`405`/`415` em JSON, validação por campo, JSON malformado, `500` sem vazar detalhes |
 | `DocumentValidatorTest` · `DocumentMaskTest` | CPF e CNPJ por dígito verificador (inclusive sequências repetidas) e máscara de documento |
 | `UserServiceTest` | Cadastro: normalização, BCrypt, saldo inicial por tipo, duplicidade, constraints; login sem enumeração de contas |
-| `AuthApiTest` | Cadastro, login e logout; cookie `HttpOnly`/`SameSite`; cookie velho em rota pública; token de usuário inexistente; cadastros simultâneos; `Content-Type` obrigatório |
-| `TokenServiceTest` · `SessionCookieTest` · `EphemeralJwtKeysConfigSourceTest` · `MoneySerializerTest` | Token (emissor, `sub`, validade), flags do cookie, par de chaves efêmero, dinheiro como string com 2 casas |
+| `AuthApiTest` | Cadastro, login e logout; cookie `HttpOnly`/`SameSite`; cookie velho em rota pública; token de usuário inexistente; cadastros simultâneos; `Content-Type` obrigatório; chave duplicada no JSON e senha acima de 72 bytes (`400`); documento com letras |
+| `TokenServiceTest` · `SessionTokenRulesTest` · `SessionCookieTest` | Token (emissor, `sub`, época, validade), token de outra execução, expirado, de outro emissor, de outra chave ou sem assinatura recusados, flags do cookie |
+| `EphemeralJwtKeysConfigSourceTest` · `JwtKeysGuardTest` · `MoneySerializerTest` | Par de chaves efêmero, as combinações de chaves com que o app se recusa a subir, dinheiro como string com 2 casas |
+| `DatabaseSurvivesIdleConnectionsTest` · `NoPersonalDataInLogsTest` | O banco em memória sobrevive ao pool que fecha as conexões ociosas; nenhum e-mail nem CPF no log de um cadastro repetido |
 | `UserSearchApiTest` | Busca exata, sem prefixo, sem o próprio usuário, só dados públicos |
-| `TransferApiTest` | Regras da transferência, remetente sempre o logado, formatos de valor, autorizador recusando ou fora do ar, *rollback* e **concorrência** (duas transferências simultâneas não deixam a conta negativa) |
-| `NotificationApiTest` · `NotificationMessagesTest` | Avisos só depois do commit, em ordem, com e-mail e mensagem; retentativas; falha de aviso não desfaz a transferência |
-| `StatementApiTest` | Extrato: ordem, filtro, paginação, só as próprias transferências, nada sensível |
+| `TransferApiTest` | Regras da transferência, remetente sempre o logado, formatos de valor, autorizador recusando ou fora do ar, *rollback*; **concorrência** com barreiras: o autorizador é chamado sem trava de saldo, as regras são conferidas de novo sob a trava (duas transferências que passam juntas não deixam a conta negativa) e transferências cruzadas não travam |
+| `NotificationApiTest` · `NotificationMessagesTest` | Avisos fora do caminho da resposta (um notificador lento não atrasa o `201`), em ordem, com e-mail e mensagem; retentativas; falha de aviso não desfaz a transferência; transferência recusada não avisa ninguém |
+| `StatementApiTest` | Extrato: ordem, filtro, paginação (inclusive a que não é número: `400`), só as próprias transferências, nada sensível |
 | `SeedDataTest` · `OpenApiContractTest` | Contas de demonstração (idempotentes); rotas e dinheiro-como-string no contrato OpenAPI |
+| `SpaServingIT` | Contra o jar de produção: o front na raiz e as rotas dele caindo no `index.html`, JSON `404` para quem não é navegador, compressão, cache, cabeçalhos de segurança e a política de conteúdo inteira, e o cookie de sessão com `Secure`, `HttpOnly` e `SameSite=Strict` |
+| `SpaFallbackProfileTest` | O filtro das rotas do front vale em produção e em desenvolvimento, e só fica de fora do perfil de teste (o perfil de desenvolvimento não roda nos testes automáticos, então a anotação é conferida à parte) |
 | `GreetingResourceTest` · `GreetingResourceIT` | `GET /hello`, no teste e contra o artefato empacotado |
 
 ### Smoke test de ponta a ponta
 
-`scripts/smoke-api.mjs` percorre o fluxo inteiro contra o app empacotado e o [stub](#sem-acesso-ao-utildevitools-stub-local): login, saldo, busca, transferência, extrato, avisos recebidos pelo notificador, recusa e indisponibilidade do autorizador, lojista e logout. Imprime `✔` por verificação e `SMOKE OK`, e sai com código `1` na primeira falha. Pode rodar várias vezes na mesma instância.
+`scripts/smoke-api.mjs` percorre o fluxo inteiro contra o app empacotado e o [stub](#sem-acesso-ao-utildevitools-stub-local): login, saldo, busca, transferência, extrato, avisos recebidos pelo notificador, recusa e indisponibilidade do autorizador, lojista e logout. Imprime `✔` por verificação e `SMOKE OK`, e sai com código `1` na primeira falha. Pode rodar até 4 vezes na mesma instância (a Marina começa com R$ 1.000,00 e o roteiro envia R$ 250,00 por rodada; na quinta o script avisa para reiniciar o app).
 
 ```bash
 node scripts/stub-externals.mjs &
@@ -957,7 +977,7 @@ node scripts/smoke-api.mjs
 
 ### Testes do front-end
 
-Hoje: **105** testes Java e **12** de integração sobre o artefato, **522** testes de unidade e de componente (Vitest, 38 arquivos) e **156** de ponta a ponta (Playwright: 155 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
+Hoje: **132** testes Java e **13** de integração sobre o artefato, **545** testes de unidade e de componente (Vitest, 39 arquivos) e **162** de ponta a ponta (Playwright: 161 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
 
 ```bash
 npm --prefix frontend run typecheck && npm --prefix frontend test
@@ -975,7 +995,7 @@ O Playwright sobe sozinho o [stub](#sem-acesso-ao-utildevitools-stub-local) (por
 | `app.spec.ts` | Cadastro pela tela, envio de ponta a ponta, extrato, saída e os dois avisos; login que volta ao destino pedido; lojista que não envia |
 | `failures.spec.ts` | Autorizador que recusa e que cai, saldo insuficiente, sessão que vence (no envio e ao abrir o extrato) e resultado desconhecido sem reenvio |
 | `showcase.spec.ts` | As seis cenas em quatro tamanhos de janela: progresso, saldo caindo com o scroll, CTA e links, movimento reduzido, cenas fixadas |
-| `quality.spec.ts` | axe-core, 320 px, texto cortado ou sobreposto, foco coberto, movimento reduzido sem atrasos, console limpo, fontes e origens, ícone e título de cada tela, foco e rolagem ao trocar de tela, política de segurança do conteúdo (CSP) |
+| `quality.spec.ts` | axe-core, 320 px, texto cortado ou sobreposto em 33 tamanhos de janela, as fronteiras da janela compacta (inclusive o celular em pé, que continua com as cenas fixadas), foco coberto, movimento reduzido sem atrasos, console limpo, fontes e origens, ícone e título de cada tela, foco e rolagem ao trocar de tela, política de segurança do conteúdo (CSP) |
 | `hostile.spec.ts` | Entradas hostis: `?next=` que tentaria sair da origem, valores como `1e3` ou `0,001`, CPF com letras e três cliques rápidos em "Enviar" |
 
 Os projetos do Playwright são `desktop` (1440×900) e `phone` (390×844) para todos os arquivos, mais `notebook` (1366×768) e `tablet` (768×1024) só para a vitrine. **Só o Chromium** é exercitado.
@@ -1041,14 +1061,16 @@ Desafio-picpay-quarkus/
     │   │   │   ├── exception/ErrorResponseDTO.java
     │   │   │   └── MoneySerializer.java           dinheiro como string com 2 casas
     │   │   ├── exceptions/                        ErrorCode, ApiException
-    │   │   ├── validation/                        DocumentValidator, DocumentMask, @ValidDocument
+    │   │   ├── validation/                        DocumentValidator, DocumentMask, @ValidDocument, @MaxUtf8Bytes
     │   │   ├── mocks/
     │   │   │   ├── AuthorizationTransaction/      REST Client do autorizador
     │   │   │   └── SendNotification/              REST Client de notificação
     │   │   └── infra/
-    │   │       ├── security/                      TokenService, SessionCookie, CurrentUser, EphemeralJwtKeysConfigSource
+    │   │       ├── security/                      TokenService, SessionCookie, CurrentUser, SessionEpoch, JwtKeysGuard, EphemeralJwtKeysConfigSource
     │   │       ├── ApiExceptionMapper · ConstraintViolationMapper · JsonErrorMapper · MismatchedInputMapper
     │   │       ├── SecurityExceptionMappers.java · GlobalExceptionHandler.java · ErrorResponses.java
+    │   │       ├── SpaFallback.java               o index.html nas rotas do front (e o cache dele)
+    │   │       ├── JacksonConfig.java             chave duplicada no JSON é erro
     │   │       └── SeedData.java                  contas de demonstração
     │   └── resources/
     │       ├── application.properties             datasource, Hibernate, sessão, serviços externos
@@ -1061,7 +1083,7 @@ Desafio-picpay-quarkus/
 ## Limitações conhecidas
 
 - **Dados voláteis.** O H2 em memória com `drop-and-create` descarta todos os dados ao reiniciar.
-- **Sessões e chaves efêmeras.** Sem as variáveis `SMALLRYE_JWT_SIGN_KEY` e `MP_JWT_VERIFY_PUBLICKEY`, cada reinício gera um par novo e derruba as sessões.
+- **Sessões não sobrevivem a um reinício.** O banco é em memória e os ids recomeçam em 1, então cada token só vale na execução que o emitiu (a época), mesmo com as chaves fixas. Sem `SMALLRYE_JWT_SIGN_KEY` e `MP_JWT_VERIFY_PUBLICKEY`, cada reinício gera, além disso, um par de chaves novo; com só uma das duas, ou com a chave por caminho de arquivo, a aplicação se recusa a subir. Trocar o H2 por um banco persistente é a hora de rever a época.
 - **Sem limite de tentativas de login.** Não há *rate limiting*: um cliente pode tentar senhas à vontade.
 - **A busca de destinatário revela se uma conta existe.** Qualquer usuário logado pode testar e-mails e documentos, sem limite de consultas, e descobrir se há conta e qual o nome. Isso é inerente a "enviar para alguém pelo e-mail ou CPF", mas, sem *rate limiting*, permite varredura.
 - **Logout não revoga o token.** Sair expira o cookie no navegador, mas o JWT já emitido continua válido até vencer (1 hora): a sessão é sem estado e não há lista de revogação.
@@ -1069,12 +1091,15 @@ Desafio-picpay-quarkus/
 - **Sem idempotência em `POST /transaction`.** Reenviar a mesma requisição cria uma segunda transferência. O cliente deve impedir o envio duplo (por exemplo, desabilitando o botão durante a requisição). O front-end do repositório faz isso, e por isso nunca reenvia depois de um resultado desconhecido (rede caída, `5xx` ou 20 s sem resposta): diz que não deu para confirmar e leva ao extrato.
 - **Aviso pode ficar `PENDING`.** Os avisos saem em memória, depois do commit. Se o processo cair entre o commit e o envio, o aviso fica `PENDING` para sempre: não há reprocessamento.
 - **CPF e CNPJ só por dígito verificador.** Não há consulta à Receita Federal.
-- **Log de duplicidade.** O Hibernate registra em `ERROR` cada violação de unicidade, mesmo ela virando `409`; em produção isso gera ruído no log.
+- **CNPJ alfanumérico não é aceito.** O validador (no servidor e no formulário) só conhece o CNPJ numérico. Os CNPJs alfanuméricos que a Receita passa a emitir (IN RFB 2.229/2024) seriam recusados: aceitá-los pede letras no documento e o cálculo do dígito com o valor `código ASCII − 48`, nos dois lados.
+- **O envio revela se um id existe.** `POST /transaction` devolve `404` para um `receiverId` que não existe e `422` (saldo ou outra regra) para um que existe, o que permite varrer ids sem custo, além da busca por e-mail ou documento que já foi listada acima. Os ids são sequenciais; é inerente a enviar por id, e o mesmo *rate limiting* ausente vale aqui.
+- **Falha de SQL fora do log do Hibernate.** O log da categoria `SqlExceptionHelper` fica desligado: a mensagem do H2 numa violação de unicidade traz o valor do índice (o e-mail ou o CPF de quem tentou se cadastrar de novo). O `409` já é tratado pelo serviço, e uma falha de SQL inesperada continua no log, com a exceção inteira, pelo `GlobalExceptionHandler`.
 - **Swagger UI ausente fora do modo dev.** No JAR empacotado, `/q/swagger-ui` não existe; a especificação continua em `/q/openapi`.
-- **Cabeçalhos de segurança: o que fica de fora.** A política de conteúdo (CSP) e o `X-Frame-Options` só valem no JAR (perfil de produção): em desenvolvimento o Vite injeta um script embutido e abre um websocket, e a Dev UI do Quarkus se enquadra, então uma política estrita quebraria o `quarkus:dev`. E não há `Strict-Transport-Security` (HSTS): o TLS termina fora do app, e o cabeçalho é de quem o termina (o proxy). Se você puser o app atrás de um CDN ou serviço de terceiros, a política `'self'` o barra de propósito: alargue-a em `application.properties`.
+- **Cabeçalhos de segurança: o que fica de fora.** A política de conteúdo (CSP) e o `X-Frame-Options` só valem no JAR (perfil de produção): em desenvolvimento o Vite injeta um script embutido e abre um websocket, e a Dev UI do Quarkus se enquadra, então uma política estrita quebraria o `quarkus:dev`. E não há `Strict-Transport-Security` (HSTS): o TLS termina fora do app, e o cabeçalho é de quem o termina (o proxy). Se você puser o app atrás de um CDN ou serviço de terceiros, a política `'self'` o barra de propósito: alargue-a na chave `%prod.quarkus.http.header."Content-Security-Policy".value` do `application.properties`.
 - **O front-end só é exercitado no Chromium.** Safari e Firefox não foram testados (o front usa recursos recentes de CSS, como `@property` e `overflow: clip`).
 - **Só pt-BR, só reais, só tema escuro.** A interface não tem outro idioma, outra moeda nem tema claro.
-- **Celular deitado.** Em janelas estreitas e baixas as cenas 2 e 3 da vitrine aparecem já no estado final, sem a animação do scroll (o palco delas não cabe numa janela assim).
+- **Janelas estreitas e de pouca altura.** No celular deitado e numa janela de computador de até 992×768 as cenas 2 e 3 da vitrine aparecem já no estado final, sem a animação do scroll (o palco delas não comporta as quatro decisões numa janela assim).
+- **O `util.devi.tools` de verdade nunca foi exercitado.** Todos os testes (Java, front e ponta a ponta) usam *mocks* ou o [stub local](#sem-acesso-ao-utildevitools-stub-local); o formato da resposta do autorizador e do notificador vem do enunciado do desafio, e uma divergência dele só apareceria numa execução com a rede liberada.
 - **Autorizador público intermitente.** O `util.devi.tools` recusa parte das requisições de propósito; transferências válidas às vezes voltam como `AUTHORIZATION_DENIED`.
 
 ---
