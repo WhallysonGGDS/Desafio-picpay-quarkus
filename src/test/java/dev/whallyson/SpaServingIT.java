@@ -1,5 +1,6 @@
 package dev.whallyson;
 
+import dev.whallyson.support.TestDocuments;
 import io.quarkus.test.junit.QuarkusIntegrationTest;
 import io.restassured.RestAssured;
 import io.restassured.config.DecoderConfig;
@@ -13,12 +14,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static io.restassured.RestAssured.given;
+import static io.restassured.http.ContentType.JSON;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 // Roda contra o jar empacotado, em perfil de produção: é onde o Quinoa serve o front na mesma origem da API.
 // (Nos @QuarkusTest o Quinoa fica desligado; o fallback do SPA também só existe em produção.)
@@ -27,6 +31,23 @@ class SpaServingIT {
 
     // O que um navegador envia ao navegar para uma URL: HTML primeiro, qualquer coisa depois.
     private static final String BROWSER = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+
+    // Quebra se: o cookie de sessão de PRODUÇÃO sair sem Secure (app.jwt.cookie-secure virar false no application.properties, ou ganhar
+    // um valor padrão na injeção). Os @QuarkusTest rodam com cookie-secure=false (%test), o e2e sobe o jar com
+    // -Dapp.jwt.cookie-secure=false, e SessionCookieTest monta o cookie à mão: só este teste, que roda o jar no perfil de produção
+    // e faz um cadastro de verdade, prova o que o README promete ("Secure fora dos perfis dev e test").
+    @Test
+    void theSessionCookieIsSecureHttpOnlyAndSameSiteStrictInProduction() {
+        String setCookie = given().contentType(JSON)
+                .body(Map.of("firstName", "Ana", "lastName", "Prod", "document", TestDocuments.cpf(), "email", TestDocuments.email(),
+                        "password", "senha-de-producao", "userType", "COMMON"))
+                .post("/auth/register").then().statusCode(201)
+                .extract().header("Set-Cookie");
+
+        assertNotNull(setCookie, "o cadastro não mandou o cookie de sessão");
+        assertThat(setCookie, allOf(containsString("arco_session="), containsString("Secure"), containsString("HttpOnly"),
+                containsString("SameSite=Strict")));
+    }
 
     // Quebra se: o front deixar de ser empacotado/servido na raiz, ou o index.html perder a raiz do React ou o idioma.
     @Test

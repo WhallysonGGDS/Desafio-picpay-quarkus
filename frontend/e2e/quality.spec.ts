@@ -6,7 +6,8 @@ import { shot } from './support/shot';
 import { resetStub } from './support/stub';
 import { DEMO, newIdentity, newUser, signIn } from './support/users';
 
-const PUBLIC = ['/', '/entrar', '/criar-conta'] as const;
+// A última é uma rota que não existe: a tela 404 também é uma tela do app.
+const PUBLIC = ['/', '/entrar', '/criar-conta', '/rota-que-nao-existe'] as const;
 const PRIVATE = ['/carteira', '/transferir', '/extrato'] as const;
 
 /**
@@ -305,6 +306,9 @@ test('uma janela um pixel acima da fronteira, ou em pé, ainda prende as cenas 2
 // RF5: em 320 px (o menor celular) nenhuma tela rola na horizontal.
 test('nenhuma rota rola na horizontal a 320 px (RF5)', async ({ page }) => {
   test.setTimeout(90_000);
+  // O teste envia dinheiro até "Enviado.": o autorizador do stub tem de aprovar, mesmo que o teste rode sozinho depois de outro que o
+  // deixou recusando (--last-failed, -g).
+  await resetStub();
   const WIDTH = 320;
   await page.setViewportSize({ width: WIDTH, height: 568 });
   // Compara com 320, não com `innerWidth`: na emulação de celular o navegador afasta o zoom para caber o que estoura, e
@@ -348,6 +352,8 @@ test('nenhuma rota rola na horizontal a 320 px (RF5)', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Enviado.' })).toBeVisible();
   await settled(page);
   await overflow('/transferir, enviado');
+  // A tela de resultado do envio não é um dos três passos: o axe também passa por ela.
+  await expectNoA11yViolations(page);
 });
 
 // Foco visível (WCAG 2.2, 2.4.11): no celular a barra de navegação é fixa e fica por cima do fim da página; o navegador, ao

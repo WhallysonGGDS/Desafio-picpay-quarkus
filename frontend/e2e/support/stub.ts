@@ -1,5 +1,6 @@
 // O stub dos serviços externos (scripts/stub-externals.mjs) é estado global do processo: os testes o configuram e o
-// consultam por aqui, e cada spec o zera antes de começar.
+// consultam por aqui. Quem envia dinheiro até o fim (o envio só termina com o autorizador aprovando) o zera antes de começar,
+// porque um teste que falhou pode ter deixado o autorizador recusando.
 const STUB = process.env.STUB_URL ?? 'http://localhost:9000';
 
 export interface StubModes {

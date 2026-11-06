@@ -21,9 +21,11 @@ import org.mockito.InOrder;
 
 import static dev.whallyson.support.TestUsers.balanceOf;
 import static dev.whallyson.support.TestUsers.transfer;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.inOrder;
@@ -87,6 +89,25 @@ class NotificationApiTest {
         InOrder order = inOrder(notifier);
         order.verify(notifier, timeout(5000)).sendNotification(to(a.email(), "Você enviou R$ 250,00 para Rafa Teste."));
         order.verify(notifier, timeout(5000)).sendNotification(to(b.email(), "Você recebeu R$ 250,00 de Ana Teste."));
+        awaitStatuses(id, NotificationStatus.SENT);
+    }
+
+    // Quebra se: a resposta voltar a esperar os avisos (o envio deixar de sair numa thread à parte). Com o notificador lento o POST levaria
+    // a soma dos dois avisos (2 x 1,5 s), e quem envia ficaria em "Autorizando…" por mais tempo do que a transferência levou. O
+    // README promete "a resposta 201 não espera os avisos"; nenhum outro teste usa um notificador lento.
+    @Test
+    void slowNotifier_doesNotDelayTheResponse() {
+        when(notifier.sendNotification(any())).thenAnswer(invocation -> {
+            Thread.sleep(1_500);
+            return null;
+        });
+
+        long start = System.nanoTime();
+        int id = send250();
+        long millis = NANOSECONDS.toMillis(System.nanoTime() - start);
+
+        assertTrue(millis < 1_000, "o 201 esperou " + millis + " ms: deveria sair sem esperar os avisos");
+        // Segura o teste até as entregas lentas acabarem: elas não podem vazar para o teste seguinte.
         awaitStatuses(id, NotificationStatus.SENT);
     }
 

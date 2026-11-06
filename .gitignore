@@ -39,6 +39,10 @@ nb-configuration.xml
 # Local environment
 .env
 
+# Chaves e cookies que o README manda gerar no diretório do projeto (openssl, curl -c): nunca vão para o git
+*.pem
+cookies.txt
+
 # Plugin directory
 /.quarkus/cli/plugins/
 # TLS Certificates

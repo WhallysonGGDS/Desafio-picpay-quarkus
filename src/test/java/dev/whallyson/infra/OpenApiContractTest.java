@@ -15,6 +15,7 @@ import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * O front-end gera seus tipos a partir deste documento. Estes testes protegem o contrato que ele precisa:
@@ -41,6 +42,18 @@ class OpenApiContractTest {
     void documentsEveryRouteTheFrontNeeds() {
         given().get("/q/openapi?format=json").then().statusCode(200)
                 .body("paths.keySet()", hasItems("/auth/register", "/auth/login", "/auth/logout", "/users/me", "/users/search", "/transaction"));
+    }
+
+    // Quebra se: o recurso de sonda dos testes (/__probe) entrar no contrato. O `target/openapi/openapi.json` que um `./mvnw test` grava
+    // passaria a ter rotas que não existem em produção, e o `check:api` do front reprovaria de mentira (ou o `gen:api`, rodado
+    // depois dos testes, poria as rotas de teste no cliente tipado e alguém as commitaria).
+    @Test
+    void testOnlyProbeRoutesStayOutOfTheContract() {
+        JsonPath doc = openApi();
+        Map<String, Object> paths = doc.getMap("paths");
+
+        assertTrue(paths.keySet().stream().noneMatch(path -> path.startsWith("/__probe")), "rotas de sonda no contrato: " + paths.keySet());
+        assertNull(doc.get("components.schemas.ProbeBody"));
     }
 
     // Quebra se: o dinheiro voltar a ser documentado como number — o cliente gerado trataria saldo como double.

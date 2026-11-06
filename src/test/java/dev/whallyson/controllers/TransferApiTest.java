@@ -94,6 +94,20 @@ class TransferApiTest {
         assertEquals("350.00", balanceOf(b));
     }
 
+    // Quebra se: a conferência de saldo virar "<= 0" em vez de "< 0": quem tem R$ 10,00 não conseguiria enviar R$ 10,00 (o formulário
+    // deixa), e o servidor responderia INSUFFICIENT_BALANCE para um envio que a conta cobre. Um centavo a mais continua recusado.
+    @Test
+    void transferringTheWholeBalance_isAllowed_andOneCentMoreIsNot() {
+        Session c = TestUsers.registerWithBalance(UserType.COMMON, "10.00");
+
+        transfer(c, b.id(), "10.01").then().statusCode(422).body("code", is("INSUFFICIENT_BALANCE"));
+        assertEquals("10.00", balanceOf(c));
+
+        transfer(c, b.id(), "10.00").then().statusCode(201);
+        assertEquals("0.00", balanceOf(c));
+        assertEquals("110.00", balanceOf(b));
+    }
+
     // Quebra se: o remetente voltar a ser lido do corpo — qualquer um moveria o dinheiro de qualquer pessoa.
     @Test
     void senderIsAlwaysTheAuthenticatedUser() {
