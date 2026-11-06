@@ -9,7 +9,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
 
-@RegisterRestClient(baseUri = "https://util.devi.tools")
+@RegisterRestClient(configKey = "notifier")
 @Path("/api/v1/notify")
 public interface SendNotification {
 

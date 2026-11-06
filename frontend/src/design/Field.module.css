@@ -1,0 +1,83 @@
+.field {
+  display: grid;
+  align-content: start; /* numa linha com outro campo, as linhas não esticam: a base dos dois fica alinhada */
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.control {
+  position: relative;
+}
+
+/* Campo de linha: só a base. A linha é --text-3 porque é ela que delimita o controle (contraste mínimo de 3:1). */
+.input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: var(--sp-2) 0 var(--sp-3);
+  font: inherit;
+  font-size: max(1rem, var(--fs-body)); /* 16 px no mínimo: abaixo disso o iOS dá zoom ao focar */
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--text-3);
+  border-radius: 0;
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--text-3);
+}
+
+/* O indicador de foco do campo é a linha de acento abaixo (.rule). Mais específico que o :focus-visible global,
+   para valer qualquer que seja a ordem em que os CSS são carregados. */
+.input:focus-visible {
+  outline: none;
+}
+
+/* Foco: a linha de acento cresce da esquerda. É o indicador de foco do campo (o outline global fica de fora). */
+.rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur-2) var(--ease-out);
+  pointer-events: none;
+}
+
+.input:focus-visible + .rule {
+  transform: scaleX(1);
+}
+
+.input[aria-invalid='true'] {
+  border-bottom-color: var(--danger);
+}
+
+.input[aria-invalid='true']:focus-visible + .rule {
+  background: var(--danger);
+}
+
+.hint {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.error {
+  font-size: var(--fs-small);
+  color: var(--danger);
+}
+
+/* O preenchimento automático do Chrome pinta o campo de claro; aqui ele volta ao fundo escuro. */
+.input:-webkit-autofill {
+  -webkit-text-fill-color: var(--text);
+  box-shadow: 0 0 0 100rem var(--bg) inset;
+}

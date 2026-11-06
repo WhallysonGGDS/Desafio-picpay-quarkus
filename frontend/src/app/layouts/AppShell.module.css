@@ -1,0 +1,119 @@
+.shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Os itens têm a altura do cabeçalho: o traço do item ativo pousa sobre a linha de baixo, como uma aba. */
+.header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: stretch;
+  column-gap: var(--sp-7);
+  min-height: 3.5rem;
+  padding: 0 var(--gutter);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.nav {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-6);
+}
+
+.link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .link:hover {
+    color: var(--text);
+  }
+}
+
+.link[aria-current='page'] {
+  color: var(--text);
+}
+
+/* O item ativo leva um traço fino, não uma cor: o acento é reservado ao valor em movimento e ao que foi confirmado. */
+.link[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--text);
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.alert {
+  padding: var(--sp-3) var(--gutter);
+  font-size: var(--fs-small);
+  color: var(--danger);
+  border-bottom: 1px solid var(--line);
+}
+
+.main {
+  flex: 1;
+  padding: var(--sp-7) var(--gutter) var(--sp-8);
+}
+
+/* Celular: a nav vira uma barra fixa embaixo, com os três itens repartindo a largura. */
+@media (max-width: 767px) {
+  .header {
+    grid-template-columns: 1fr auto;
+    min-height: 3.25rem;
+  }
+
+  .nav {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+  }
+
+  .link {
+    justify-content: center;
+    min-height: 3.5rem;
+  }
+
+  .link[aria-current='page']::after {
+    left: 30%;
+    right: 30%;
+    top: -1px;
+    bottom: auto;
+  }
+
+  .main {
+    padding-bottom: calc(var(--sp-8) + 3.5rem + env(safe-area-inset-bottom));
+  }
+
+  /* O navegador leva um controle focado (Tab) só até a borda da janela, e a borda de baixo é onde a barra fica: sem isto o
+     último botão da tela (o "Enviar") ficava atrás dela. A margem é a altura da barra mais um respiro. */
+  :root {
+    scroll-padding-bottom: calc(3.5rem + 1px + env(safe-area-inset-bottom) + var(--sp-5));
+  }
+}

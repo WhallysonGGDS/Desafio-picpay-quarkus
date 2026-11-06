@@ -1,0 +1,165 @@
+.button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  min-height: 3rem;
+  padding: 0 var(--sp-5);
+  font: inherit;
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Ocupado: segue desabilitado, mas legível, com um traço de luz que se desenha e se recolhe na base
+   (o arco, em miniatura). O traço cresce e encolhe dentro da largura do botão, nunca passa dela. */
+.button[aria-busy='true'] {
+  cursor: progress;
+  opacity: 1;
+}
+
+.button[aria-busy='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: busy 1.6s var(--ease-in-out) infinite;
+  pointer-events: none;
+}
+
+@keyframes busy {
+  0% {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  50% {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+  50.01% {
+    transform: scaleX(1);
+    transform-origin: right;
+  }
+  100% {
+    transform: scaleX(0);
+    transform-origin: right;
+  }
+}
+
+/* Primário: texto com borda de 1 px, sem preenchimento. A borda em acento entra por opacidade. */
+.primary {
+  border: 1px solid var(--text-3);
+}
+
+.primary::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--accent);
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease-out);
+  pointer-events: none;
+}
+
+/* Discreto: só texto; um traço cresce sob ele. */
+.quiet {
+  min-height: 2.75rem;
+  padding: 0 var(--sp-1);
+  color: var(--text-2);
+}
+
+.quiet::after {
+  content: '';
+  position: absolute;
+  left: var(--sp-1);
+  right: var(--sp-1);
+  bottom: 0.6rem;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur-2) var(--ease-out);
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .primary:hover:not(:disabled)::after {
+    opacity: 1;
+  }
+
+  .quiet:hover:not(:disabled) {
+    color: var(--text);
+  }
+
+  .quiet:hover:not(:disabled)::after {
+    transform: scaleX(1);
+  }
+
+  .button:hover:not(:disabled) .shaft,
+  .button:hover:not(:disabled) .head {
+    transform: translateX(0) scaleX(1);
+  }
+}
+
+/* A seta: haste e ponta se estendem juntas. Em repouso a haste está curta. */
+.arrow {
+  flex: none;
+  width: 1.75rem;
+  height: 0.5rem;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  stroke-linecap: square;
+}
+
+.shaft,
+.head {
+  transition: transform var(--dur-2) var(--ease-out);
+  vector-effect: non-scaling-stroke;
+}
+
+.shaft {
+  transform-box: fill-box;
+  transform-origin: 0 50%;
+  transform: scaleX(0.55);
+}
+
+.head {
+  transform: translateX(-11.7px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button[aria-busy='true']::before {
+    animation: none;
+    transform: scaleX(1);
+    opacity: 0.7;
+  }
+
+  .shaft {
+    transform: none;
+  }
+
+  .head {
+    transform: none;
+  }
+}

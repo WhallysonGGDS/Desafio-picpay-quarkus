@@ -1,0 +1,71 @@
+/* Cena fixada: a janela inteira. A luz chega a Rafael aos 90% do scroll da cena, junto com o fim da queda do saldo. */
+.proposal {
+  --arc: clamp(0, calc(var(--p) / 0.9), 1);
+  --land: clamp(0, calc((var(--p) - 0.9) * 10), 1);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(1rem, 4svh, 3rem);
+  padding: clamp(4.5rem, 11svh, 7rem) var(--gutter) clamp(1.5rem, 5svh, 3.5rem);
+}
+
+.title {
+  max-width: 24ch;
+  font-size: clamp(1.75rem, 1rem + 2.4vw, 3.25rem);
+  font-weight: 300;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+/* No celular, em coluna: a carteira em cima, o arco embaixo. Em tela larga, lado a lado: o arco à esquerda, a carteira à direita. */
+.stage {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: space-between;
+  gap: clamp(1rem, 4svh, 2.5rem);
+  min-height: 0;
+}
+
+.flow {
+  position: relative;
+  height: clamp(8rem, 24svh, 14rem);
+  margin-bottom: var(--sp-5);
+}
+
+.wallet {
+  min-width: 0;
+}
+
+/* A linha do crédito não é uma rampa: é um evento. A luz chega (90%), e a linha entra. O espaço dela já está reservado. */
+.entry {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity var(--dur-3) var(--ease-out),
+    transform var(--dur-3) var(--ease-out);
+}
+
+.entry[data-credited='true'] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (min-width: 64rem) {
+  .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    align-items: center;
+    column-gap: var(--sp-8);
+  }
+
+  .flow {
+    height: clamp(12rem, 42svh, 26rem);
+    margin-bottom: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry {
+    transition: none;
+  }
+}

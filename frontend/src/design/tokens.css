@@ -1,0 +1,46 @@
+/* Tokens do Arco. Uma paleta pequena, um único acento (valor em movimento e estado confirmado) e escala tipográfica
+   grande para os títulos. Nada aqui é decoração: cada variável existe porque alguma tela a usa. */
+:root {
+  /* Cor */
+  --bg: #05070c;
+  --surface: #0a0e17;
+  --line: #1a2233;
+  --text: #eef1f6;
+  --text-2: #8a94a6;
+  --text-3: #717c91;
+  --accent: #8fe3ff;
+  --danger: #e8737b;
+
+  /* Tipografia */
+  --font-sans: 'Geist Variable', system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+  --fs-micro: 0.75rem;
+  --fs-small: 0.875rem;
+  --fs-body: 1rem;
+  --fs-title: clamp(1.5rem, 1.1rem + 1.6vw, 2.25rem);
+  --fs-display-l: clamp(2.5rem, 1.6rem + 4vw, 5rem);
+  --fs-display-xl: clamp(3.5rem, 1rem + 10vw, 9.5rem);
+  --fw-display: 200;
+  --fw-title: 300;
+  --fw-body: 350;
+
+  /* Espaço */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 72px;
+  --sp-section: clamp(96px, 16vh, 200px);
+  --gutter: clamp(16px, 4vw, 48px);
+
+  /* Movimento */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-1: 160ms;
+  --dur-2: 320ms;
+  --dur-3: 640ms;
+  --dur-4: 1200ms;
+}

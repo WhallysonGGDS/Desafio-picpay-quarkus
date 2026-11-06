@@ -1,0 +1,7 @@
+.wordmark {
+  font-size: 1.25rem;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--text);
+}

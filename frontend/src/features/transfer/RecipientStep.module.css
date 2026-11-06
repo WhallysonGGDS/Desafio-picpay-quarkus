@@ -1,0 +1,92 @@
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-5);
+}
+
+/* Guia, vazio e contagem (a contagem só para o leitor de tela). A região existe mesmo vazia: é uma região viva, e uma
+   região viva precisa estar na página antes de o texto chegar para ser anunciada. Vazia, não ocupa espaço. */
+.status {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.status:not(:empty) {
+  padding-bottom: var(--sp-3);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.list > li {
+  border-top: 1px solid var(--line);
+}
+
+/* Uma pessoa por linha: nome em cima, o tipo embaixo, o documento mascarado à direita em mono. O escolhido (quando se
+   volta a este passo) leva um fio de acento à esquerda: é a única coisa confirmada na tela. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'name doc'
+    'kind doc';
+  align-items: center;
+  column-gap: var(--sp-4);
+  row-gap: 2px;
+  width: 100%;
+  padding: var(--sp-4) var(--sp-1);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-left: 1px solid transparent;
+  border-radius: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.row[aria-current='true'] {
+  padding-left: var(--sp-3);
+  border-left-color: var(--accent);
+}
+
+@media (hover: hover) {
+  .row:hover {
+    background: var(--surface);
+  }
+}
+
+.name {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 1.125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kind {
+  grid-area: kind;
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.doc {
+  grid-area: doc;
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+/* Buscando: o lugar da lista, vazio, para a tela não pular quando o resultado chega. */
+.skeleton {
+  height: 4.5rem;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}

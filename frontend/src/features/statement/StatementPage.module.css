@@ -1,0 +1,64 @@
+.page {
+  max-width: 56rem;
+}
+
+.title {
+  margin-bottom: var(--sp-6);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+/* As abas usam a mesma linguagem da nav: texto, e um traço sobre a linha de baixo na aba escolhida. */
+.tabs {
+  display: flex;
+  gap: var(--sp-6);
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  position: relative;
+  padding: var(--sp-3) 0;
+  font: inherit;
+  color: var(--text-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .tab:hover {
+    color: var(--text);
+  }
+}
+
+.tab[aria-selected='true'] {
+  color: var(--text);
+}
+
+.tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--text);
+}
+
+.count {
+  margin: var(--sp-5) 0 var(--sp-3);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.moreError {
+  margin-top: var(--sp-4);
+  font-size: var(--fs-small);
+  color: var(--danger);
+}
+
+.more {
+  margin-top: var(--sp-4);
+}

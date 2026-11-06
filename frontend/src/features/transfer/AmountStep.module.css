@@ -1,0 +1,93 @@
+/* Uma coluna que PODE encolher (minmax(0, 1fr)): com a trilha `auto`, a largura intrínseca do input gigante empurrava o
+   formulário para fora da coluna e da tela. */
+.form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-5);
+}
+
+/* O valor é o assunto do passo: o campo tem o tamanho do título da tela, em mono, e o "R$" fica pequeno e apagado
+   à frente, como no saldo. Campo de linha, como os demais: só a base, com a linha de acento crescendo no foco. */
+.amount {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--sp-3);
+  border-bottom: 1px solid var(--text-3);
+}
+
+.amount[data-invalid='true'] {
+  border-bottom-color: var(--danger);
+}
+
+.currency {
+  font-family: var(--font-mono);
+  font-size: var(--fs-title);
+  font-weight: 300;
+  color: var(--text-2);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-2) 0 var(--sp-3);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-display-l);
+  font-weight: var(--fw-display);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--text-3);
+}
+
+/* O indicador de foco é a linha de acento (.rule). Mais específico que o :focus-visible global. */
+.input:focus-visible {
+  outline: none;
+}
+
+.rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur-2) var(--ease-out);
+  pointer-events: none;
+}
+
+.amount:focus-within .rule {
+  transform: scaleX(1);
+}
+
+.amount[data-invalid='true']:focus-within .rule {
+  background: var(--danger);
+}
+
+.lines {
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+
+.alert {
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rule {
+    transition: none;
+  }
+}
