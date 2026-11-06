@@ -426,6 +426,7 @@ test('cada tela tem o seu título', async ({ page }) => {
     '/': 'Arco',
     '/entrar': 'Entrar na carteira | Arco',
     '/criar-conta': 'Criar minha carteira | Arco',
+    '/rota-que-nao-existe': 'Página não encontrada | Arco',
     '/carteira': 'Carteira | Arco',
     '/transferir': 'Transferir | Arco',
     '/extrato': 'Extrato | Arco',
