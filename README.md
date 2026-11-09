@@ -977,7 +977,7 @@ node scripts/smoke-api.mjs
 
 ### Testes do front-end
 
-Hoje: **132** testes Java e **13** de integração sobre o artefato, **545** testes de unidade e de componente (Vitest, 39 arquivos) e **162** de ponta a ponta (Playwright: 161 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
+Hoje: **132** testes Java e **13** de integração sobre o artefato, **545** testes de unidade e de componente (Vitest, 39 arquivos) e **164** de ponta a ponta (Playwright: 163 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
 
 ```bash
 npm --prefix frontend run typecheck && npm --prefix frontend test
@@ -988,14 +988,14 @@ npm --prefix frontend run build && npm --prefix frontend run check:bundle
 npm --prefix frontend run e2e
 ```
 
-O Playwright sobe sozinho o [stub](#sem-acesso-ao-utildevitools-stub-local) (porta 9000) e o artefato (porta 8080), e reaproveita os dois se já estiverem de pé fora do CI. Os testes usam o fuso `America/Sao_Paulo` e o idioma `pt-BR`, para as datas saírem iguais em qualquer máquina. As capturas de tela dos testes ficam em `frontend/e2e/__screenshots__/` (fora do git).
+O Playwright sobe sozinho o [stub](#sem-acesso-ao-utildevitools-stub-local) (porta 9000) e o artefato (porta 8080), e reaproveita os dois se já estiverem de pé fora do CI. Os testes usam o fuso `America/Sao_Paulo` e o idioma `pt-BR`, para as datas saírem iguais em qualquer máquina. As capturas de tela dos testes ficam em `frontend/e2e/__screenshots__/` (fora do git) e são tiradas depois de as animações de entrada terminarem, para a revisão visual ver a tela como ela fica (a captura da abertura da vitrine, "desenhando", é de propósito no meio da animação).
 
 | Arquivo | O que verifica |
 | :--- | :--- |
 | `app.spec.ts` | Cadastro pela tela, envio de ponta a ponta, extrato, saída e os dois avisos; login que volta ao destino pedido; lojista que não envia |
 | `failures.spec.ts` | Autorizador que recusa e que cai, saldo insuficiente, sessão que vence (no envio e ao abrir o extrato) e resultado desconhecido sem reenvio |
 | `showcase.spec.ts` | As seis cenas em quatro tamanhos de janela: progresso, saldo caindo com o scroll, CTA e links, movimento reduzido, cenas fixadas |
-| `quality.spec.ts` | axe-core, 320 px, texto cortado ou sobreposto em 33 tamanhos de janela, as fronteiras da janela compacta (inclusive o celular em pé, que continua com as cenas fixadas), foco coberto, movimento reduzido sem atrasos, console limpo, fontes e origens, ícone e título de cada tela, foco e rolagem ao trocar de tela, política de segurança do conteúdo (CSP) |
+| `quality.spec.ts` | axe-core, 320 px, texto cortado ou sobreposto em 33 tamanhos de janela, as fronteiras da janela compacta (inclusive o celular em pé, que continua com as cenas fixadas), foco coberto, movimento reduzido sem atrasos, console limpo, fontes e origens, ícone e título de cada tela (a 404 também), o alinhamento do texto do link da 404, foco e rolagem ao trocar de tela, política de segurança do conteúdo (CSP) |
 | `hostile.spec.ts` | Entradas hostis: `?next=` que tentaria sair da origem, valores como `1e3` ou `0,001`, CPF com letras e três cliques rápidos em "Enviar" |
 
 Os projetos do Playwright são `desktop` (1440×900) e `phone` (390×844) para todos os arquivos, mais `notebook` (1366×768) e `tablet` (768×1024) só para a vitrine. **Só o Chromium** é exercitado.
