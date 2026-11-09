@@ -229,7 +229,7 @@ test.describe('cenas', () => {
     await expect(scenes(page)).toHaveCount(6);
 
     await page.waitForTimeout(1200);
-    await shot(page, 'vitrine-1a-abertura-desenhando');
+    await shot(page, 'vitrine-1a-abertura-desenhando', { settled: false });
     await page.waitForTimeout(3600);
     await shot(page, 'vitrine-1b-abertura');
     await scrollToScene(page, 2, 0.45);
