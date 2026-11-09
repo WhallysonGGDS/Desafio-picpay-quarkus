@@ -1,0 +1,29 @@
+.page {
+  min-height: 100dvh;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: var(--sp-5);
+  max-width: 36rem;
+  margin-inline: auto;
+  padding: var(--gutter);
+}
+
+.brand {
+  text-decoration: none;
+}
+
+.title {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-title);
+  line-height: 1.15;
+}
+
+.hint {
+  color: var(--text-2);
+}
+
+/* O link discreto tem um respiro interno de 4 px: recua para o texto alinhar com o de cima (como nas outras telas). */
+.link {
+  margin-left: calc(var(--sp-1) * -1);
+}

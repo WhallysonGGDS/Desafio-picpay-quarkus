@@ -1,0 +1,53 @@
+.list {
+  container-type: inline-size;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+/* Na coluna estreita, duas linhas: quem e quanto em cima, a data embaixo. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'who amount'
+    'when when';
+  column-gap: var(--sp-4);
+  row-gap: var(--sp-1);
+  align-items: baseline;
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.who {
+  grid-area: who;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.amount {
+  grid-area: amount;
+  justify-self: end;
+}
+
+.when {
+  grid-area: when;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+/* Numa lista larga, uma linha só: a data à esquerda, o nome e o valor à direita. */
+@container (min-width: 34rem) {
+  .row {
+    grid-template-columns: 11rem minmax(0, 1fr) auto;
+    grid-template-areas: 'when who amount';
+  }
+
+  .when {
+    font-size: var(--fs-small);
+  }
+}

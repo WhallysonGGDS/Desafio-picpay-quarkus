@@ -1,40 +1,47 @@
 package dev.whallyson.controllers;
 
-import dev.whallyson.entitys.user.User;
+import dev.whallyson.dtos.responses.ResponseUser;
+import dev.whallyson.dtos.responses.ResponseUserSummary;
+import dev.whallyson.infra.security.CurrentUser;
 import dev.whallyson.services.UserService;
+import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
-import jakarta.ws.rs.*;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
+
 import java.util.List;
 
-// "/users" - rota do controller (O controller tem basicamente a funcionalidade de chamar métodos no servidor)
-// Métodos do tipo POST, PUT e DELETE precisam ser anotados com @Transactional, pois alteram dados do banco de dados
-// Eu coloquei o @Transactional nos métodos chamados pelos métodos POST - veja nos Package services!
+// "/users" - rotas do usuário autenticado. O id vem sempre do token, nunca da requisição.
 @Path("/users")
-@Produces(MediaType.APPLICATION_JSON)
+@Authenticated
 @Consumes(MediaType.APPLICATION_JSON)
+@Produces(MediaType.APPLICATION_JSON)
 public class UserController {
 
-    // Injeta dependências
-    // O Quarkus, durante a execução, se encarrega de fornecer uma instância de UserService pronta para uso.
     @Inject
     UserService userService;
 
-    // O verbo GET na rota /users retorna a lista de Usuários do sistema
+    @Inject
+    CurrentUser currentUser;
+
+    // Perfil e saldo de quem está logado
     @GET
-    @Produces(MediaType.APPLICATION_JSON)
-    public List<User> getUsers() {
-        return userService.listUsers();
+    @Path("me")
+    public ResponseUser me() {
+        return ResponseUser.from(userService.requireById(currentUser.id()));
     }
 
-    // O verbo POST na rota /users deve receber em seu body um JSON da entity User
-    // O methode cria o usuário no sistema seguindo às regras definidas na entity
-    @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response createUser (User newUser) {
-        User createUser = userService.saveUser(newUser);
-        return Response.status(Response.Status.CREATED).entity(createUser).build();
+    // Busca de destinatário por e-mail ou documento (correspondência exata). Devolve uma lista com 0 ou 1 item.
+    @GET
+    @Path("search")
+    public List<ResponseUserSummary> search(
+            @QueryParam("q") @NotNull(message = "REQUIRED") @Size(min = 3, message = "QUERY_TOO_SHORT") String q) {
+        return userService.lookup(q, currentUser.id()).stream().map(ResponseUserSummary::from).toList();
     }
 }

@@ -1,0 +1,45 @@
+.skeleton {
+  border-top: 1px solid var(--line);
+}
+
+.skeletonRow {
+  height: 4.25rem;
+  border-bottom: 1px solid var(--line);
+  animation: breathe 1.8s var(--ease-in-out) infinite;
+}
+
+.skeletonRow::before {
+  content: '';
+  display: block;
+  width: 38%;
+  height: 0.75rem;
+  margin-top: 1.4rem;
+  background: var(--line);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.empty {
+  padding: var(--sp-5) 0;
+  color: var(--text-2);
+}
+
+.failure {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-2);
+  padding: var(--sp-4) 0;
+}
+
+.reason {
+  font-size: var(--fs-small);
+  color: var(--danger);
+}

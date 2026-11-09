@@ -1,0 +1,38 @@
+.money {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.row {
+  font-size: var(--fs-body);
+}
+
+/* O saldo: peso 200, grande, apertado. É o que a tela existe para mostrar. */
+.display {
+  display: block;
+  font-size: var(--fs-display-l);
+  font-weight: var(--fw-display);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.long {
+  font-size: calc(var(--fs-display-l) * 0.6);
+}
+
+/* O "R$" do saldo: menor, apagado e sem o aperto de letras do número. */
+.currency {
+  font-size: 0.4em;
+  font-weight: 300;
+  letter-spacing: 0;
+  color: var(--text-2);
+}
+
+/* Em mono o ponto e a vírgula ocupam uma célula inteira de algarismo; no tamanho grande isso deixa a vírgula solta
+   ("750 ,00"). Recuam para os algarismos, que ficam com o seu ritmo. */
+.separator {
+  margin-inline: -0.17em;
+}

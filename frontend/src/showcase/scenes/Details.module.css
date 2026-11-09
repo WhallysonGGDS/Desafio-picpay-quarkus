@@ -1,0 +1,47 @@
+.details {
+  display: grid;
+  align-content: center;
+  min-height: 100svh;
+  padding: var(--sp-section) var(--gutter);
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+/* Cada linha entra numa janela do scroll da cena, uma depois da outra (a segunda 14% depois da primeira): opacidade e uma
+   subida curta. Sem o scroll (movimento reduzido: --p = 1) todas estão inteiras. */
+.row {
+  --row: clamp(0, calc((var(--p) - (0.1 + var(--i) * 0.13)) * 7), 1);
+  display: grid;
+  gap: var(--sp-3);
+  padding: clamp(1.5rem, 5svh, 3rem) 0;
+  border-bottom: 1px solid var(--line);
+  opacity: var(--row);
+  transform: translateY(calc((1 - var(--row)) * 24px));
+}
+
+.term {
+  font-size: var(--fs-display-l);
+  font-weight: 200;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.detail {
+  max-width: 28ch;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+@media (min-width: 768px) {
+  .row {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    align-items: baseline;
+    column-gap: var(--sp-6);
+  }
+}
