@@ -22,3 +22,8 @@
 .hint {
   color: var(--text-2);
 }
+
+/* O link discreto tem um respiro interno de 4 px: recua para o texto alinhar com o de cima (como nas outras telas). */
+.link {
+  margin-left: calc(var(--sp-1) * -1);
+}

@@ -14,7 +14,7 @@ export function NotFound() {
       </Link>
       <h1 className={styles.title}>Essa página não existe.</h1>
       <p className={styles.hint}>O endereço pode estar errado, ou a página pode ter mudado de lugar.</p>
-      <ButtonLink to={ROUTES.home} variant="quiet">
+      <ButtonLink to={ROUTES.home} variant="quiet" className={styles.link}>
         Ir para o início
       </ButtonLink>
     </main>

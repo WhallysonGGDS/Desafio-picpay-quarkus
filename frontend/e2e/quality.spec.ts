@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { expectNoA11yViolations } from './support/axe';
 import { collectConsoleErrors } from './support/console';
 import { scrollToScene } from './support/scroll';
@@ -440,6 +440,24 @@ test('cada tela tem o seu título', async ({ page }) => {
     await page.goto(route);
     await expect(page, route).toHaveTitle(expected[route] as string);
   }
+});
+
+// O link discreto tem um respiro interno de 4 px, e cada tela que o põe no começo de uma linha o recua para o texto dele alinhar com o
+// de cima (`margin-left`). A 404 não recuava: o "Ir para o início" ficava 4 px à direita do título. Mede-se o texto, não a caixa.
+test('na tela 404 o link discreto alinha com o texto de cima', async ({ page }) => {
+  await page.goto('/rota-que-nao-existe');
+  await settled(page);
+  const textLeft = (locator: Locator) =>
+    locator.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getBoundingClientRect().left;
+    });
+
+  const title = await textLeft(page.getByRole('heading', { level: 1 }));
+  const link = await textLeft(page.getByRole('link', { name: 'Ir para o início', exact: true }));
+
+  expect(Math.abs(link - title), `título em x=${title}, link em x=${link}`).toBeLessThanOrEqual(1);
 });
 
 // A aba do navegador mostra a marca (e não o ícone genérico de página), e a página se descreve ao ser compartilhada.
