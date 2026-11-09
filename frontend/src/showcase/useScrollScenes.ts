@@ -2,7 +2,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
 import 'lenis/dist/lenis.css';
-import { useEffect, type RefObject } from 'react';
+import { useLayoutEffect, type RefObject } from 'react';
 import {
   COMPACT_WINDOW_QUERY,
   formatProgress,
@@ -90,9 +90,15 @@ function start(root: HTMLElement): () => void {
  * O motor da vitrine: rolagem suave (Lenis), progresso e pins por cena (ScrollTrigger), tudo desfeito ao sair. Reage ao vivo à
  * preferência de movimento do sistema (ligar "reduzir movimento" com a página aberta tira o Lenis e os pins na hora) e ao
  * tamanho da janela (girar o celular liga ou desliga os pins).
+ *
+ * É um efeito de LAYOUT, e não um efeito comum, por causa de quem o desfaz: ao trocar de tela, o React desfaz os efeitos de layout
+ * da tela que sai ANTES de rodar os da que entra, e os efeitos comuns só depois da pintura. A rota-layout (RouteFocus) leva a
+ * página ao topo num efeito de layout: com o motor desfeito num efeito comum, o Lenis ainda estava vivo nesse intervalo e, se a
+ * rolagem suave estivesse andando (quem clica no CTA antes de ela assentar), escrevia o alvo dele por cima do topo (preso ao fim da
+ * página nova), e o cadastro abria rolado até o fim.
  */
 export function useScrollScenes(root: RefObject<HTMLElement | null>): void {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = root.current;
     if (!element) return;
 
