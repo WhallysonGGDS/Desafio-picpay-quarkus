@@ -270,7 +270,7 @@ describe('cadastro', () => {
     await submitRegister(user);
 
     expect(await screen.findByText('E-mail inválido.')).toBeInTheDocument();
-    expect(screen.getByText('A senha precisa ter de 8 a 72 caracteres.')).toBeInTheDocument();
+    expect(screen.getByText('A senha precisa ter pelo menos 8 caracteres e no máximo 72 bytes (acentos e emojis ocupam mais de um).')).toBeInTheDocument();
     expect(screen.getAllByText('Preencha este campo.')).toHaveLength(2); // nome e documento
     expect(screen.getByLabelText('Nome')).toHaveFocus();
     expect(calls).toBe(0);
@@ -280,13 +280,13 @@ describe('cadastro', () => {
   it('a dica da senha dá lugar ao erro quando ele aparece', async () => {
     await openRegister();
     const user = userEvent.setup();
-    expect(screen.getByText('De 8 a 72 caracteres.')).toBeInTheDocument();
+    expect(screen.getByText('Pelo menos 8 caracteres.')).toBeInTheDocument();
 
     await fillRegister(user, { password: 'curta' });
     await submitRegister(user);
 
-    expect(await screen.findByText('A senha precisa ter de 8 a 72 caracteres.')).toBeInTheDocument();
-    expect(screen.queryByText('De 8 a 72 caracteres.')).toBeNull();
+    expect(await screen.findByText('A senha precisa ter pelo menos 8 caracteres e no máximo 72 bytes (acentos e emojis ocupam mais de um).')).toBeInTheDocument();
+    expect(screen.queryByText('Pelo menos 8 caracteres.')).toBeNull();
   });
 
   // Quebra se: o documento for com a máscara (o back-end só normaliza, mas o contrato é dígitos), ou os textos sem aparar.
@@ -378,7 +378,7 @@ describe('cadastro', () => {
     await submitRegister(user);
 
     expect(await screen.findByText('Texto longo demais.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Senha')).toHaveAccessibleDescription(/A senha precisa ter de 8 a 72 caracteres\./);
+    expect(screen.getByLabelText('Senha')).toHaveAccessibleDescription(/A senha precisa ter pelo menos 8 caracteres e no máximo 72 bytes/);
     expect(screen.getByLabelText('Nome')).toHaveFocus(); // o primeiro, na ordem da tela
   });
 

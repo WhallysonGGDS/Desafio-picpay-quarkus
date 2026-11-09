@@ -165,7 +165,7 @@ export function RegisterPage() {
           label="Senha"
           type="password"
           autoComplete="new-password"
-          hint={errors.password ? undefined : 'De 8 a 72 caracteres.'}
+          hint={errors.password ? undefined : 'Pelo menos 8 caracteres.'}
           value={form.password}
           error={errors.password}
           onChange={(event) => edit('password', event.target.value)}

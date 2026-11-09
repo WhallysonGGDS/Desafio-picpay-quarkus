@@ -26,7 +26,8 @@ const FIELD_MESSAGES: Record<string, string> = {
   REQUIRED: 'Preencha este campo.',
   TOO_LONG: 'Texto longo demais.',
   INVALID_EMAIL: 'E-mail inválido.',
-  PASSWORD_LENGTH: 'A senha precisa ter de 8 a 72 caracteres.',
+  // O máximo é em bytes (UTF-8, o limite do BCrypt): quem usa acentos e emojis chega nele com menos de 72 caracteres.
+  PASSWORD_LENGTH: 'A senha precisa ter pelo menos 8 caracteres e no máximo 72 bytes (acentos e emojis ocupam mais de um).',
   INVALID_DOCUMENT: 'Documento inválido.',
   QUERY_TOO_SHORT: 'Digite ao menos 3 caracteres.',
   INVALID_AMOUNT: 'Digite um valor válido, com até duas casas decimais.',
