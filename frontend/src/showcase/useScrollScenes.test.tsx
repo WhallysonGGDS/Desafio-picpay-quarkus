@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { StrictMode, useRef } from 'react';
+import { StrictMode, useLayoutEffect, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { COMPACT_WINDOW_QUERY, REDUCED_MOTION_QUERY, SCENE_PROGRESS_EVENT } from './motion';
 import { Scene, useSceneProgress, type SceneId } from './Scene';
@@ -101,6 +101,29 @@ afterEach(() => {
 });
 
 describe('useScrollScenes', () => {
+  // Quebra se: o motor se desfizer num efeito comum (passivo) em vez de num efeito de layout. Ao trocar de tela o React desfaz os
+  // efeitos de layout da tela que sai ANTES de rodar os da que entra, e os efeitos comuns só depois da pintura. A rota-layout
+  // (RouteFocus) leva a página ao topo num efeito de layout: com o Lenis ainda vivo nesse intervalo, e a rolagem suave andando, ele
+  // escrevia o alvo dele por cima do topo (preso ao fim da página nova) e o cadastro, aberto pelo CTA no fim da vitrine, abria rolado
+  // até o fim (visto no navegador em 5 de 8 tentativas; o teste do Playwright confere o resultado, e este, a ordem que o causava).
+  it('desfaz o Lenis antes dos efeitos de layout da tela que entra, onde a rota-layout leva a página ao topo', () => {
+    media();
+    const lenisWhenTheNewScreenLaidOut: boolean[] = [];
+    function NextScreen() {
+      useLayoutEffect(() => {
+        lenisWhenTheNewScreenLaidOut.push(created[0]!.destroyed);
+      }, []);
+      return <p>tela nova</p>;
+    }
+    const App = ({ showcase }: { showcase: boolean }) => (showcase ? <Harness /> : <NextScreen />);
+    const { rerender } = render(<App showcase />);
+    expect(created).toHaveLength(1);
+
+    rerender(<App showcase={false} />);
+
+    expect(lenisWhenTheNewScreenLaidOut).toEqual([true]);
+  });
+
   // RF5. Quebra se: com movimento reduzido a vitrine criar o Lenis ou os pins (a rolagem suave e as cenas presas são
   // exatamente o que essa pessoa pediu para não ter), ou deixar o conteúdo que depende de --p escondido.
   it('com movimento reduzido: todas as cenas em 1.000, sem Lenis, sem pins, sem ScrollTrigger', () => {

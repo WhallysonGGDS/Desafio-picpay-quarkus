@@ -675,4 +675,33 @@ test.describe('ao trocar de tela', () => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
     await expect(page.getByRole('heading', { level: 1, name: 'Criar minha carteira' })).toBeFocused();
   });
+
+  // Quebra se: a rolagem suave (o Lenis) ainda estiver andando quando a tela troca e escrever a posição dela depois de a rota-layout levar
+  // a página ao topo. O motor da vitrine se desfazia num efeito passivo, que roda DEPOIS do efeito de layout que rola ao topo: nesse
+  // intervalo o Lenis, com a animação a caminho, escrevia o alvo dele de novo (preso ao fim da página nova, 496 px), e o cadastro
+  // abria rolado até o fim. Quem rola até o CTA e clica antes de a rolagem assentar via isso. O teste de cima não pega: o clique do
+  // Playwright espera o alvo parar de se mexer, e com a rolagem já assentada não há corrida (por isso só reprovava de vez em quando, no
+  // CI). Aqui o clique vai direto ao DOM, com a rolagem ainda andando, e a corrida se repete para não depender da sorte de uma vez.
+  test('a tela nova abre no topo também quando a rolagem suave ainda está andando', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 360, height: 640 });
+
+    for (let round = 1; round <= 6; round += 1) {
+      await page.goto('/');
+      await expect(page.locator('[data-scene]')).toHaveCount(6);
+      for (let step = 0; step < 14; step += 1) {
+        await page.mouse.wheel(0, 700);
+        await page.waitForTimeout(60);
+      }
+      // A condição do teste: a rolagem suave ainda anda (o Lenis marca a raiz enquanto isso).
+      await expect(page.locator('html'), `rodada ${round}`).toHaveClass(/lenis-scrolling/);
+
+      await page.getByRole('link', { name: 'Abrir minha carteira' }).evaluate((link) => (link as HTMLElement).click());
+      await expect(page).toHaveURL('/criar-conta');
+
+      // Dá tempo de um quadro tardio do motor escrever por cima.
+      await page.waitForTimeout(400);
+      expect(await page.evaluate(() => window.scrollY), `rodada ${round}: a página tem de abrir no topo`).toBe(0);
+    }
+  });
 });
