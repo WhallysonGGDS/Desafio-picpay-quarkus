@@ -27,8 +27,12 @@ public final class TestUsers {
     }
 
     public static Session register(UserType type, String firstName) {
+        return register(type, firstName, type == UserType.MERCHANT ? TestDocuments.cnpj() : TestDocuments.cpf());
+    }
+
+    /** O mesmo cadastro, com o documento escolhido por quem chama (já normalizado: é ele que a sessão devolve). */
+    public static Session register(UserType type, String firstName, String document) {
         String email = TestDocuments.email();
-        String document = type == UserType.MERCHANT ? TestDocuments.cnpj() : TestDocuments.cpf();
         Response response = given().contentType(JSON)
                 .body(Map.of("firstName", firstName, "lastName", "Teste", "document", document,
                         "email", email, "password", "segredo123", "userType", type.name()))

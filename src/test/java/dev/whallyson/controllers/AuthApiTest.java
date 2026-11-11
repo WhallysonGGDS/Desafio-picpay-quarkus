@@ -133,6 +133,19 @@ class AuthApiTest {
         given().contentType(JSON).body(body).post("/auth/register").then().statusCode(201);
     }
 
+    // Quebra se: a loja com CNPJ alfanumérico (os que a Receita emite desde julho de 2026) voltar a ser recusada, ou o mesmo documento escrito
+    // com outra pontuação e outras maiúsculas passar como novo. Letras só valem no CNPJ: como CPF continuam sendo 400.
+    @Test
+    void register_alphanumericCnpj_isAcceptedForAShop_butNotAsACpf() {
+        String cnpj = TestDocuments.alphanumericCnpj();
+        given().contentType(JSON).body(registerBody(TestDocuments.email(), TestDocuments.formatCnpj(cnpj).toLowerCase(), "MERCHANT"))
+                .post("/auth/register").then().statusCode(201).body("userType", is("MERCHANT"));
+        given().contentType(JSON).body(registerBody(TestDocuments.email(), cnpj, "MERCHANT"))
+                .post("/auth/register").then().statusCode(409).body("code", is("DUPLICATE_DOCUMENT"));
+        given().contentType(JSON).body(registerBody(TestDocuments.email(), TestDocuments.alphanumericCnpj(), "COMMON"))
+                .post("/auth/register").then().statusCode(400).body("fieldErrors.field", hasItem("document"));
+    }
+
     @Test
     void login_is200_caseInsensitive_andSetsCookie() {
         var s = TestUsers.register(UserType.COMMON);

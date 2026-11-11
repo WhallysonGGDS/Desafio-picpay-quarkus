@@ -10,6 +10,7 @@ public final class TestDocuments {
 
     private static final AtomicLong CPF_SEQ = new AtomicLong(100_000_000L);
     private static final AtomicLong CNPJ_SEQ = new AtomicLong(10_000_000L);
+    private static final AtomicLong ALPHANUMERIC_CNPJ_SEQ = new AtomicLong(1_000_000L);
     private static final AtomicLong EMAIL_SEQ = new AtomicLong();
 
     private static final int[] CNPJ_WEIGHTS_FIRST = {5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2};
@@ -31,6 +32,22 @@ public final class TestDocuments {
         return withFirst + cnpjDigit(withFirst, CNPJ_WEIGHTS_SECOND);
     }
 
+    /**
+     * CNPJ alfanumérico válido (IN RFB 2.229/2024), em maiúsculas e sem pontuação. A raiz começa com duas letras e termina com um número
+     * em base 36, então tem letras e algarismos misturados; o valor de cada caractere no cálculo é o código ASCII menos 48.
+     */
+    public static String alphanumericCnpj() {
+        return alphanumericCnpjStartingWith("AB");
+    }
+
+    /** O mesmo, com a raiz começando pelas duas letras dadas (para o teste que precisa de uma letra específica, como "S" ou "I"). */
+    public static String alphanumericCnpjStartingWith(String twoLetters) {
+        String sequence = String.format("%6s", Long.toString(ALPHANUMERIC_CNPJ_SEQ.incrementAndGet(), 36)).replace(' ', '0');
+        String base = (twoLetters + sequence).toUpperCase() + "0001";
+        String withFirst = base + cnpjDigit(base, CNPJ_WEIGHTS_FIRST);
+        return withFirst + cnpjDigit(withFirst, CNPJ_WEIGHTS_SECOND);
+    }
+
     public static String email() {
         return "user" + EMAIL_SEQ.incrementAndGet() + "@teste.com";
     }
@@ -38,6 +55,12 @@ public final class TestDocuments {
     /** 52998224725 vira 529.982.247-25. */
     public static String formatCpf(String digits) {
         return digits.substring(0, 3) + "." + digits.substring(3, 6) + "." + digits.substring(6, 9) + "-" + digits.substring(9);
+    }
+
+    /** 12ABC34501DE35 vira 12.ABC.345/01DE-35. */
+    public static String formatCnpj(String normalized) {
+        return normalized.substring(0, 2) + "." + normalized.substring(2, 5) + "." + normalized.substring(5, 8) + "/"
+                + normalized.substring(8, 12) + "-" + normalized.substring(12);
     }
 
     private static int cpfDigit(String digits) {
