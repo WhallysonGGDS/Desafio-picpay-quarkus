@@ -1,6 +1,6 @@
 import type { ApiError } from '../../api/ApiError';
 import { fieldMessage, messageFor } from '../../api/errorMessages';
-import { digitsOnly, isValidCnpj, isValidCpf, type DocumentKind } from '../../lib/document';
+import { isValidCnpj, isValidCpf, normalizeDocument, type DocumentKind } from '../../lib/document';
 
 // A validação do cliente só poupa uma ida ao servidor: o servidor continua sendo a autoridade. Por isso o e-mail
 // é conferido de forma frouxa (uma arroba, sem espaços), e quem decide se ele é válido é o back-end.
@@ -46,14 +46,14 @@ function emailError(value: string): string | undefined {
 }
 
 export function validateRegister(form: RegisterForm): FieldCodes<RegisterField> {
-  const digits = digitsOnly(form.document);
-  const documentValid = form.userType === 'COMMON' ? isValidCpf(digits) : isValidCnpj(digits);
+  const document = normalizeDocument(form.document);
+  const documentValid = form.userType === 'COMMON' ? isValidCpf(document) : isValidCnpj(document);
 
   const found: FieldCodes<RegisterField> = {
     firstName: nameError(form.firstName),
     lastName: nameError(form.lastName),
     email: emailError(form.email),
-    document: digits === '' ? 'REQUIRED' : documentValid ? undefined : 'INVALID_DOCUMENT',
+    document: document === '' ? 'REQUIRED' : documentValid ? undefined : 'INVALID_DOCUMENT',
     // A senha não é aparada: o espaço faz parte dela.
     password:
       form.password === ''
