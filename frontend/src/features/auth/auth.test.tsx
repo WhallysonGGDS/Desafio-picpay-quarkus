@@ -223,6 +223,37 @@ describe('cadastro', () => {
     expect(cnpj).toHaveValue('11.222.333/0001-81');
   });
 
+  // Quebra se: o campo do CNPJ voltar a recusar letras (a loja com CNPJ alfanumérico, que a Receita emite desde julho de 2026, não
+  // conseguiria se cadastrar), a máscara deixar as letras em minúsculas, ou o teclado do celular continuar só numérico (sem como digitar
+  // uma letra). O CPF segue com o teclado numérico.
+  it('o CNPJ aceita letras (em maiúsculas) e o teclado da loja deixa de ser numérico', async () => {
+    await openRegister();
+    const user = userEvent.setup();
+
+    expect(screen.getByLabelText('CPF')).toHaveAttribute('inputmode', 'numeric');
+    await user.click(screen.getByRole('radio', { name: 'Loja' }));
+    const cnpj = screen.getByLabelText('CNPJ');
+    expect(cnpj).toHaveAttribute('inputmode', 'text');
+    expect(cnpj).toHaveAttribute('autocapitalize', 'characters');
+    expect(cnpj).toHaveAttribute('spellcheck', 'false');
+
+    await user.type(cnpj, '12abc34501de35');
+    expect(cnpj).toHaveValue('12.ABC.345/01DE-35');
+  });
+
+  // Quebra se: trocar de Loja para Pessoa deixar as letras do CNPJ no campo do CPF (que nunca as aceita).
+  it('de Loja para Pessoa, as letras do documento saem', async () => {
+    await openRegister();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('radio', { name: 'Loja' }));
+    await user.type(screen.getByLabelText('CNPJ'), '12abc34501de35');
+    await user.click(screen.getByRole('radio', { name: 'Pessoa' }));
+
+    expect(screen.getByLabelText('CPF')).toHaveValue('123.450.135');
+    expect(screen.getByLabelText('CPF')).toHaveAttribute('inputmode', 'numeric');
+  });
+
   it('começa como Pessoa e oferece Pessoa e Loja num grupo "Eu sou"', async () => {
     await openRegister();
 
@@ -332,6 +363,48 @@ describe('cadastro', () => {
 
     await waitFor(() => expect(sent['userType']).toBe('MERCHANT'));
     expect(sent['document']).toBe('11222333000181');
+  });
+
+  // Quebra se: a loja com CNPJ alfanumérico for ao servidor com a máscara ou em minúsculas (o servidor compara o texto exato), ou o cadastro
+  // dela for recusado na tela.
+  it('loja com CNPJ alfanumérico envia o documento em maiúsculas e sem pontuação', async () => {
+    let sent: Record<string, unknown> = {};
+    server.use(
+      http.post('*/auth/register', async ({ request }) => {
+        sent = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...marina, userType: 'MERCHANT' }, { status: 201 });
+      }),
+    );
+    await openRegister();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('radio', { name: 'Loja' }));
+    await fillRegister(user, { firstName: 'Loja', lastName: 'Arco', document: '12.abc.345/01de-35' });
+    await submitRegister(user);
+
+    await waitFor(() => expect(sent['userType']).toBe('MERCHANT'));
+    expect(sent['document']).toBe('12ABC34501DE35');
+  });
+
+  // Quebra se: um CNPJ alfanumérico com o dígito verificador errado for ao servidor.
+  it('CNPJ alfanumérico com dígito errado bloqueia o envio sem chamar o servidor', async () => {
+    let calls = 0;
+    server.use(
+      http.post('*/auth/register', () => {
+        calls += 1;
+        return HttpResponse.json(marina, { status: 201 });
+      }),
+    );
+    await openRegister();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('radio', { name: 'Loja' }));
+    await fillRegister(user, { document: '12abc34501de36' });
+    await submitRegister(user);
+
+    expect(await screen.findByText('Documento inválido.')).toBeInTheDocument();
+    expect(screen.getByLabelText('CNPJ')).toHaveFocus();
+    expect(calls).toBe(0);
   });
 
   // Quebra se: o 409 aparecer só como alerta genérico, longe do campo que a pessoa precisa trocar.

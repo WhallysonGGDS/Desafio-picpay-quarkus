@@ -1,5 +1,5 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
-import { cnpjFrom, cpfFrom } from './documents';
+import { alphanumericCnpjFrom, cnpjFrom, cpfFrom } from './documents';
 
 export type UserType = 'COMMON' | 'MERCHANT';
 
@@ -27,8 +27,9 @@ let counter = 0;
 /**
  * Uma identidade nova, com e-mail e documento válidos e únicos. A semente vem do relógio e de um contador: não repete
  * dentro da execução nem contra um servidor que ficou de pé de uma execução anterior (o H2 guarda as contas até ele cair).
+ * `alphanumeric` troca o CNPJ da loja por um CNPJ alfanumérico (com letras).
  */
-export function newIdentity({ type = 'COMMON' }: { type?: UserType } = {}): Identity {
+export function newIdentity({ type = 'COMMON', alphanumeric = false }: { type?: UserType; alphanumeric?: boolean } = {}): Identity {
   counter += 1;
   const seed = (Date.now() % 90_000_000) + counter;
   return {
@@ -36,13 +37,13 @@ export function newIdentity({ type = 'COMMON' }: { type?: UserType } = {}): Iden
     lastName: `Ponta a Ponta ${seed}`,
     email: `e2e-${seed}@arco.test`,
     password: 'senha-de-teste-123',
-    document: type === 'MERCHANT' ? cnpjFrom(seed) : cpfFrom(seed),
+    document: type === 'MERCHANT' ? (alphanumeric ? alphanumericCnpjFrom(seed) : cnpjFrom(seed)) : cpfFrom(seed),
     type,
   };
 }
 
 /** Cadastra uma conta nova pela API (o saldo inicial é o de qualquer cadastro) e devolve como entrar nela. */
-export async function newUser(request: APIRequestContext, options: { type?: UserType } = {}): Promise<Identity> {
+export async function newUser(request: APIRequestContext, options: { type?: UserType; alphanumeric?: boolean } = {}): Promise<Identity> {
   const identity = newIdentity(options);
   const response = await request.post('/auth/register', {
     data: {

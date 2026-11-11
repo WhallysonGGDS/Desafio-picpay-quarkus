@@ -136,6 +136,28 @@ describe('1 / 3: para quem', () => {
     expect(searched).toEqual(['rafael@arco.demo']);
   });
 
+  // Quebra se: a busca passar a mexer no que foi digitado (tirar as letras como se só dígitos valessem, ou pôr em maiúsculas por conta
+  // própria): o CNPJ alfanumérico nunca chegaria inteiro ao servidor. Quem normaliza (maiúsculas, pontuação) é o servidor, e o campo
+  // de busca não tem máscara: serve também para e-mail.
+  it('busca o CNPJ alfanumérico como foi digitado e mostra a loja com as letras do meio', async () => {
+    const { searched } = api();
+    server.use(
+      http.get('*/users/search', ({ request }) => {
+        searched.push(new URL(request.url).searchParams.get('q') ?? '');
+        return HttpResponse.json([{ ...summary(loja), maskedDocument: '**.ABC.345/****-**' }]);
+      }),
+    );
+    renderApp('/transferir', { user: marina });
+    const user = typist();
+    await screen.findByLabelText(SEARCH);
+
+    await user.type(screen.getByLabelText(SEARCH), ' 12.abc.345/01de-35 ');
+    const row = await screen.findByRole('button', { name: /Loja Arco/ });
+
+    expect(within(row).getByText('**.ABC.345/****-**')).toBeInTheDocument();
+    expect(searched).toEqual(['12.abc.345/01de-35']);
+  });
+
   it('mostra uma loja como Loja', async () => {
     api();
     server.use(http.get('*/users/search', () => HttpResponse.json([summary(loja)])));

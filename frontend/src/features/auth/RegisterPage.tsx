@@ -5,7 +5,7 @@ import { useRegister } from '../../app/session';
 import { useDocumentTitle } from '../../app/useDocumentTitle';
 import { Button, ButtonLink } from '../../design/Button';
 import { Field } from '../../design/Field';
-import { digitsOnly, maskDocumentInput, type DocumentKind } from '../../lib/document';
+import { maskDocumentInput, normalizeDocument, type DocumentKind } from '../../lib/document';
 import { ROUTES } from '../../routes';
 import styles from './auth.module.css';
 import {
@@ -76,7 +76,7 @@ export function RegisterPage() {
       {
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
-        document: digitsOnly(form.document),
+        document: normalizeDocument(form.document),
         email: form.email.trim(),
         password: form.password,
         userType: form.userType,
@@ -153,7 +153,10 @@ export function RegisterPage() {
         <Field
           ref={register_('document')}
           label={documentLabel}
-          inputMode="numeric"
+          // O CPF é só número: teclado numérico. O CNPJ pode ter letras (o alfanumérico): teclado de texto, com maiúsculas.
+          inputMode={form.userType === 'COMMON' ? 'numeric' : 'text'}
+          autoCapitalize={form.userType === 'COMMON' ? 'none' : 'characters'}
+          spellCheck={false}
           autoComplete="off"
           placeholder={DOCUMENT_PLACEHOLDER[form.userType]}
           value={form.document}

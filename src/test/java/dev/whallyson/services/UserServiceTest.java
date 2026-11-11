@@ -80,6 +80,39 @@ class UserServiceTest {
         assertEquals(ErrorCode.DUPLICATE_DOCUMENT, ex.code());
     }
 
+    // Quebra se: o CNPJ alfanumérico for gravado como veio (com máscara e minúsculas) em vez de maiúsculo e sem pontuação: a busca de
+    // destinatário compara o texto exato.
+    @Test
+    void register_storesAnAlphanumericCnpjUpperCaseWithoutPunctuation() {
+        String cnpj = TestDocuments.alphanumericCnpj();
+        User shop = users.register(req(TestDocuments.email(), TestDocuments.formatCnpj(cnpj).toLowerCase(), UserType.MERCHANT));
+        assertEquals(cnpj, shop.document);
+    }
+
+    // Quebra se: o mesmo CNPJ alfanumérico, escrito com outra pontuação e outras maiúsculas, passar como um documento novo.
+    @Test
+    void register_rejectsDuplicateAlphanumericCnpj_acrossCaseAndPunctuation() {
+        String cnpj = TestDocuments.alphanumericCnpj();
+        users.register(req(TestDocuments.email(), cnpj, UserType.MERCHANT));
+        ApiException ex = assertThrows(ApiException.class,
+                () -> users.register(req(TestDocuments.email(), TestDocuments.formatCnpj(cnpj).toLowerCase(), UserType.MERCHANT)));
+        assertEquals(ErrorCode.DUPLICATE_DOCUMENT, ex.code());
+    }
+
+    // Quebra se: as letras passarem a valer fora do CNPJ (no CPF), um dígito verificador errado passar, ou o texto em volta do documento
+    // voltar a ser ignorado ("CNPJ: ..." era gravado como se fosse o CNPJ).
+    @Test
+    void requestRegister_alphanumericCnpj_constraints() {
+        String cnpj = TestDocuments.alphanumericCnpj();
+        String wrongDigit = cnpj.substring(0, 13) + (char) ('0' + (cnpj.charAt(13) - '0' + 1) % 10);
+        assertEquals(Map.of(), violations(req("a@b.co", cnpj, UserType.MERCHANT)));
+        assertEquals(Map.of(), violations(req("a@b.co", TestDocuments.formatCnpj(cnpj).toLowerCase(), UserType.MERCHANT)));
+        assertEquals("INVALID_DOCUMENT", violations(req("a@b.co", cnpj, UserType.COMMON)).get("document"));
+        assertEquals("INVALID_DOCUMENT", violations(req("a@b.co", wrongDigit, UserType.MERCHANT)).get("document"));
+        assertEquals("INVALID_DOCUMENT", violations(req("a@b.co", "CNPJ: " + TestDocuments.formatCnpj(cnpj), UserType.MERCHANT)).get("document"));
+        assertEquals("INVALID_DOCUMENT", violations(req("a@b.co", cnpj.replace("A", "Á"), UserType.MERCHANT)).get("document"));
+    }
+
     @Test
     void requestRegister_constraints() {
         String ok = TestDocuments.cpf();

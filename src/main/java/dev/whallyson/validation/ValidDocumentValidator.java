@@ -5,11 +5,7 @@ import dev.whallyson.entitys.user.UserType;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
-import java.util.regex.Pattern;
-
 public class ValidDocumentValidator implements ConstraintValidator<ValidDocument, RequestRegister> {
-
-    private static final Pattern MASKED_DOCUMENT = Pattern.compile("[0-9.\\-/\\s]+");
 
     @Override
     public boolean isValid(RequestRegister request, ConstraintValidatorContext context) {
@@ -17,13 +13,13 @@ public class ValidDocumentValidator implements ConstraintValidator<ValidDocument
         if (request == null || request.document() == null || request.document().isBlank() || request.userType() == null) {
             return true;
         }
-        String digits = DocumentValidator.digitsOnly(request.document());
-        // Só dígitos e a pontuação de um documento (ponto, traço, barra, espaço): letras em volta ("CPF: 529.982.247-25 ok") não passam,
-        // como na busca de destinatário. Antes só os dígitos eram conferidos e o texto inteiro era gravado.
-        boolean valid = MASKED_DOCUMENT.matcher(request.document()).matches()
-                && (request.userType() == UserType.MERCHANT
-                        ? DocumentValidator.isValidCnpj(digits)
-                        : DocumentValidator.isValidCpf(digits));
+        // Só a pontuação da máscara sai: o resto do texto continua lá e reprova na conferência. Letras em volta ("CPF: 529.982.247-25 ok")
+        // não passam, como na busca de destinatário. Antes só os dígitos eram conferidos e o texto inteiro era gravado.
+        // As letras de A a Z valem no CNPJ (alfanumérico) e nunca no CPF.
+        String document = DocumentValidator.normalize(request.document());
+        boolean valid = request.userType() == UserType.MERCHANT
+                ? DocumentValidator.isValidCnpj(document)
+                : DocumentValidator.isValidCpf(document);
         if (!valid) {
             context.disableDefaultConstraintViolation();
             context.buildConstraintViolationWithTemplate(context.getDefaultConstraintMessageTemplate())
