@@ -109,7 +109,9 @@ O projeto **não** possui: atualização ou exclusão de usuários, recuperaçã
 
 ## Regras de negócio
 
-**Cadastro.** O e-mail é guardado em minúsculas e o documento só com dígitos, e a unicidade vale sobre esses valores (então `ANA@x.com` e `ana@x.com`, ou `529.982.247-25` e `52998224725`, são a mesma conta). O documento precisa ser um **CPF válido** para `COMMON` e um **CNPJ válido** para `MERCHANT` (conferência dos dígitos verificadores); aceita dígitos e a pontuação da máscara (`.`, `-`, `/` e espaços), e qualquer letra é recusada. A senha tem no mínimo 8 caracteres e no máximo **72 bytes em UTF-8** (o limite do BCrypt, que guarda a senha): quem usa acentos ou emojis tem menos que 72 caracteres, e o formulário conta os bytes como o servidor. O saldo inicial é definido pelo servidor, nunca pelo cliente.
+**Cadastro.** O e-mail é guardado em minúsculas e o documento sem pontuação e em maiúsculas, e a unicidade vale sobre esses valores (então `ANA@x.com` e `ana@x.com`, `529.982.247-25` e `52998224725`, ou `12.abc.345/01de-35` e `12ABC34501DE35`, são a mesma conta). O documento precisa ser um **CPF válido** para `COMMON` e um **CNPJ válido** para `MERCHANT` (conferência dos dígitos verificadores); aceita a pontuação da máscara (`.`, `-`, `/` e espaços), e o que sobra tem de ser um documento: o CPF só tem dígitos, o CNPJ pode ter letras de `A` a `Z` (veja o **CNPJ alfanumérico**, logo abaixo), e texto em volta (`CPF: 529.982.247-25 ok`) ou letra acentuada é recusado. A senha tem no mínimo 8 caracteres e no máximo **72 bytes em UTF-8** (o limite do BCrypt, que guarda a senha): quem usa acentos ou emojis tem menos que 72 caracteres, e o formulário conta os bytes como o servidor. O saldo inicial é definido pelo servidor, nunca pelo cliente.
+
+**CNPJ alfanumérico.** Desde julho de 2026 a Receita emite CNPJs com letras (IN RFB 2.229/2024); os numéricos que já existem continuam valendo. O CNPJ tem 14 caracteres: os 12 primeiros são algarismos ou letras de `A` a `Z`, e os dois últimos, os dígitos verificadores, são sempre algarismos (`12.ABC.345/01DE-35` é o exemplo oficial). O cálculo é o módulo 11 de sempre, com cada caractere valendo o código ASCII menos 48 (`0` a `9` valem 0 a 9 e `A` vale 17, e não 10 como em base 36), então a conta de um CNPJ numérico não muda. O documento é guardado normalizado e a busca de destinatário o acha digitado de qualquer jeito: com ou sem máscara, em maiúsculas ou minúsculas. A conversão para maiúsculas é só de `a` a `z`, no servidor e no formulário: a do Unicode transforma `ß` em `SS`, `ı` em `I` e `ſ` em `S`, e um texto com esses caracteres viraria um documento válido. No cadastro da loja o campo do CNPJ põe as letras em maiúsculas e o teclado do celular é o de texto; o do CPF continua numérico.
 
 **Transferência.** As regras são verificadas nesta ordem:
 
@@ -194,7 +196,7 @@ flowchart LR
 | Entidades | `entitys` | Modelo persistente com Hibernate ORM + Panache no padrão *Active Record* (`PanacheEntityBase`). Nunca saem pela API. |
 | DTOs | `dtos` | Corpos de requisição e resposta, contratos dos serviços externos e o formato padrão de erro. |
 | Erros | `exceptions` | `ErrorCode` (status e código estável) e `ApiException`. |
-| Validação | `validation` | CPF/CNPJ por dígito verificador, máscara de documento e as constraints `@ValidDocument` e `@MaxUtf8Bytes` (a senha, em bytes). |
+| Validação | `validation` | CPF e CNPJ (numérico e alfanumérico) por dígito verificador, normalização e máscara de documento e as constraints `@ValidDocument` e `@MaxUtf8Bytes` (a senha, em bytes). |
 | Integrações | `mocks` | Interfaces MicroProfile REST Client para o autorizador e para o serviço de notificação. |
 | Infraestrutura | `infra` | `ExceptionMapper`s, a configuração do Jackson (chave duplicada no JSON é `400`), o `SpaFallback` (devolve o `index.html` nas rotas do front, e o cache dele), dados de demonstração e, em `infra/security`, token, cookie, época da sessão, usuário atual e a guarda das chaves do JWT. |
 
@@ -614,7 +616,7 @@ Cria a conta e já inicia a sessão (o cookie vem no `Set-Cookie`). O saldo inic
 | :--- | :--- | :--- |
 | `firstName` | `string` | Obrigatório, até 80 caracteres |
 | `lastName` | `string` | Obrigatório, até 80 caracteres |
-| `document` | `string` | CPF (`COMMON`) ou CNPJ (`MERCHANT`) válido, com ou sem a pontuação da máscara (`.`, `-`, `/`, espaços); uma letra é recusada. Único |
+| `document` | `string` | CPF (`COMMON`) ou CNPJ (`MERCHANT`) válido, com ou sem a pontuação da máscara (`.`, `-`, `/`, espaços). O CNPJ pode ter letras de `A` a `Z` (alfanumérico), em maiúsculas ou minúsculas; no CPF, ou com qualquer outro texto, uma letra é recusada. Guardado em maiúsculas e sem pontuação. Único |
 | `email` | `string` | Formato válido, até 160 caracteres. Único |
 | `password` | `string` | No mínimo 8 caracteres e no máximo 72 **bytes** em UTF-8 (o limite do BCrypt) |
 | `userType` | `string` | `COMMON` ou `MERCHANT` |
@@ -716,7 +718,7 @@ curl -b cookies.txt http://localhost:8080/users/me
 
 ### `GET /users/search`
 
-Busca um destinatário por **e-mail** ou **documento** (CPF/CNPJ, com ou sem pontuação). A correspondência é exata; `q` precisa de pelo menos 3 caracteres. Devolve uma lista com 0 ou 1 item, nunca o próprio usuário.
+Busca um destinatário por **e-mail** ou **documento** (CPF ou CNPJ, inclusive o alfanumérico, com ou sem pontuação e em maiúsculas ou minúsculas). Um texto que só tem algarismos, letras de `A` a `Z` e a pontuação da máscara é tratado como documento; um com `@` ou qualquer outro caractere, como e-mail. A correspondência é exata; `q` precisa de pelo menos 3 caracteres. Devolve uma lista com 0 ou 1 item, nunca o próprio usuário.
 
 ```bash
 curl -b cookies.txt "http://localhost:8080/users/search?q=rafael@arco.demo"
@@ -947,13 +949,13 @@ Os testes **nunca** chamam o `util.devi.tools`: os dois clientes REST externos s
 | Classe | O que verifica |
 | :--- | :--- |
 | `ErrorModelTest` | Corpo de erro único: `404`/`405`/`415` em JSON, validação por campo, JSON malformado, `500` sem vazar detalhes |
-| `DocumentValidatorTest` · `DocumentMaskTest` | CPF e CNPJ por dígito verificador (inclusive sequências repetidas) e máscara de documento |
-| `UserServiceTest` | Cadastro: normalização, BCrypt, saldo inicial por tipo, duplicidade, constraints; login sem enumeração de contas |
-| `AuthApiTest` | Cadastro, login e logout; cookie `HttpOnly`/`SameSite`; cookie velho em rota pública; token de usuário inexistente; cadastros simultâneos; `Content-Type` obrigatório; chave duplicada no JSON e senha acima de 72 bytes (`400`); documento com letras |
+| `DocumentValidatorTest` · `DocumentMaskTest` | CPF e CNPJ por dígito verificador (inclusive sequências repetidas); o CNPJ alfanumérico, com o exemplo oficial da Receita, vetores de um cálculo feito por fora do código, os casos de resto 0 e 1 do módulo e os que só o alfabeto derruba (a conta fecha, mas há minúscula, `Ç`, algarismo de largura total ou letra grega); a normalização só ASCII e a máscara de documento |
+| `UserServiceTest` | Cadastro: normalização (inclusive o CNPJ alfanumérico, guardado em maiúsculas e sem pontuação), BCrypt, saldo inicial por tipo, duplicidade, constraints; login sem enumeração de contas |
+| `AuthApiTest` | Cadastro, login e logout; cookie `HttpOnly`/`SameSite`; cookie velho em rota pública; token de usuário inexistente; cadastros simultâneos; `Content-Type` obrigatório; chave duplicada no JSON e senha acima de 72 bytes (`400`); documento com texto em volta (`400`); loja com CNPJ alfanumérico (`201`, e `409` para o mesmo documento escrito de outro jeito) e o mesmo documento como CPF (`400`) |
 | `TokenServiceTest` · `SessionTokenRulesTest` · `SessionCookieTest` | Token (emissor, `sub`, época, validade), token de outra execução, expirado, de outro emissor, de outra chave ou sem assinatura recusados, flags do cookie |
 | `EphemeralJwtKeysConfigSourceTest` · `JwtKeysGuardTest` · `MoneySerializerTest` | Par de chaves efêmero, as combinações de chaves com que o app se recusa a subir, dinheiro como string com 2 casas |
 | `DatabaseSurvivesIdleConnectionsTest` · `NoPersonalDataInLogsTest` | O banco em memória sobrevive ao pool que fecha as conexões ociosas; nenhum e-mail nem CPF no log de um cadastro repetido |
-| `UserSearchApiTest` | Busca exata, sem prefixo, sem o próprio usuário, só dados públicos |
+| `UserSearchApiTest` | Busca exata, sem prefixo, sem o próprio usuário, só dados públicos; o CNPJ alfanumérico achado com máscara, em minúsculas ou sem pontuação, e não achado por trecho, com texto em volta ou com letras de outros alfabetos que a maiúscula do Unicode aproximaria |
 | `TransferApiTest` | Regras da transferência, remetente sempre o logado, formatos de valor, autorizador recusando ou fora do ar, *rollback*; **concorrência** com barreiras: o autorizador é chamado sem trava de saldo, as regras são conferidas de novo sob a trava (duas transferências que passam juntas não deixam a conta negativa) e transferências cruzadas não travam |
 | `NotificationApiTest` · `NotificationMessagesTest` | Avisos fora do caminho da resposta (um notificador lento não atrasa o `201`), em ordem, com e-mail e mensagem; retentativas; falha de aviso não desfaz a transferência; transferência recusada não avisa ninguém |
 | `StatementApiTest` | Extrato: ordem, filtro, paginação (inclusive a que não é número: `400`), só as próprias transferências, nada sensível |
@@ -977,7 +979,7 @@ node scripts/smoke-api.mjs
 
 ### Testes do front-end
 
-Hoje: **132** testes Java e **13** de integração sobre o artefato, **546** testes de unidade e de componente (Vitest, 39 arquivos) e **166** de ponta a ponta (Playwright: 165 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
+Hoje: **191** testes Java e **13** de integração sobre o artefato, **600** testes de unidade e de componente (Vitest, 39 arquivos) e **168** de ponta a ponta (Playwright: 167 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
 
 ```bash
 npm --prefix frontend run typecheck && npm --prefix frontend test
@@ -992,7 +994,7 @@ O Playwright sobe sozinho o [stub](#sem-acesso-ao-utildevitools-stub-local) (por
 
 | Arquivo | O que verifica |
 | :--- | :--- |
-| `app.spec.ts` | Cadastro pela tela, envio de ponta a ponta, extrato, saída e os dois avisos; login que volta ao destino pedido; lojista que não envia |
+| `app.spec.ts` | Cadastro pela tela, envio de ponta a ponta, extrato, saída e os dois avisos; login que volta ao destino pedido; lojista que não envia; loja com CNPJ alfanumérico (cadastro pela tela, digitando em minúsculas, e envio a ela achando-a pelo CNPJ com máscara) |
 | `failures.spec.ts` | Autorizador que recusa e que cai, saldo insuficiente, sessão que vence (no envio e ao abrir o extrato) e resultado desconhecido sem reenvio |
 | `showcase.spec.ts` | As seis cenas em quatro tamanhos de janela: progresso, saldo caindo com o scroll, CTA e links, movimento reduzido, cenas fixadas |
 | `quality.spec.ts` | axe-core, 320 px, texto cortado ou sobreposto em 33 tamanhos de janela, as fronteiras da janela compacta (inclusive o celular em pé, que continua com as cenas fixadas), foco coberto, movimento reduzido sem atrasos, console limpo, fontes e origens, ícone e título de cada tela (a 404 também), o alinhamento do texto do link da 404, foco e rolagem ao trocar de tela (inclusive com a rolagem suave da vitrine ainda andando), política de segurança do conteúdo (CSP) |
@@ -1091,7 +1093,6 @@ Desafio-picpay-quarkus/
 - **Sem idempotência em `POST /transaction`.** Reenviar a mesma requisição cria uma segunda transferência. O cliente deve impedir o envio duplo (por exemplo, desabilitando o botão durante a requisição). O front-end do repositório faz isso, e por isso nunca reenvia depois de um resultado desconhecido (rede caída, `5xx` ou 20 s sem resposta): diz que não deu para confirmar e leva ao extrato.
 - **Aviso pode ficar `PENDING`.** Os avisos saem em memória, depois do commit. Se o processo cair entre o commit e o envio, o aviso fica `PENDING` para sempre: não há reprocessamento.
 - **CPF e CNPJ só por dígito verificador.** Não há consulta à Receita Federal.
-- **CNPJ alfanumérico não é aceito.** O validador (no servidor e no formulário) só conhece o CNPJ numérico. Os CNPJs alfanuméricos que a Receita passa a emitir (IN RFB 2.229/2024) seriam recusados: aceitá-los pede letras no documento e o cálculo do dígito com o valor `código ASCII − 48`, nos dois lados.
 - **O envio revela se um id existe.** `POST /transaction` devolve `404` para um `receiverId` que não existe e `422` (saldo ou outra regra) para um que existe, o que permite varrer ids sem custo, além da busca por e-mail ou documento que já foi listada acima. Os ids são sequenciais; é inerente a enviar por id, e o mesmo *rate limiting* ausente vale aqui.
 - **Falha de SQL fora do log do Hibernate.** O log da categoria `SqlExceptionHelper` fica desligado: a mensagem do H2 numa violação de unicidade traz o valor do índice (o e-mail ou o CPF de quem tentou se cadastrar de novo). O `409` já é tratado pelo serviço, e uma falha de SQL inesperada continua no log, com a exceção inteira, pelo `GlobalExceptionHandler`.
 - **Swagger UI ausente fora do modo dev.** No JAR empacotado, `/q/swagger-ui` não existe; a especificação continua em `/q/openapi`.

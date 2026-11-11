@@ -2,7 +2,7 @@
 
 Data: 2026-11-01
 Branch: `ccr-2f5e7339-pybi0z`
-Status: entregue na PR #2 (os desvios e as decisões estão no diário do plano B)
+Status: entregue na PR #2 (os desvios e as decisões estão no diário do plano B); o CNPJ alfanumérico, que ficou de fora da entrega original, entrou depois (R81 a R86 do diário)
 
 ## 1. Contexto e objetivo
 
