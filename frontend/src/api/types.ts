@@ -9,7 +9,6 @@ export type Transaction = Schemas['ResponseTransaction'];
 export type RegisterBody = Schemas['RequestRegister'];
 export type LoginBody = Schemas['RequestLogin'];
 export type TransferBody = Schemas['RequestTransaction'];
-export type ErrorBody = Schemas['ErrorResponseDTO'];
 
 /** Uma página do extrato. Escrito à mão: o OpenAPI não expressa o genérico (só traz ResponsePageResponseTransaction). */
 export interface Page<T> {

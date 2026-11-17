@@ -31,8 +31,6 @@ export class ApiError extends Error {
   readonly statusCode: number;
   readonly code: ApiErrorCode;
   readonly fieldErrors: FieldError[];
-  /** Falha de rede, e não resposta do servidor: a tela trata os dois como estados diferentes. */
-  readonly isNetwork: boolean;
 
   constructor(statusCode: number, code: ApiErrorCode, fieldErrors: FieldError[] = []) {
     super(`${code} (${statusCode})`);
@@ -40,11 +38,5 @@ export class ApiError extends Error {
     this.statusCode = statusCode;
     this.code = code;
     this.fieldErrors = fieldErrors;
-    this.isNetwork = code === 'NETWORK';
-  }
-
-  /** O código de erro de um campo do formulário, se o servidor apontou esse campo. */
-  fieldCode(field: string): string | undefined {
-    return this.fieldErrors.find((error) => error.field === field)?.code;
   }
 }

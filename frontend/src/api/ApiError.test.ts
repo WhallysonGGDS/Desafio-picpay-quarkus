@@ -26,23 +26,4 @@ describe('ApiError', () => {
     expect(error.fieldErrors).toEqual([{ field: 'email', code: 'INVALID_EMAIL' }]);
     expect(error.message).toContain('VALIDATION_ERROR');
   });
-
-  // Quebra se: um erro de servidor for tratado como falta de conexão (ou o contrário): são estados distintos na tela.
-  it('só NETWORK é erro de rede', () => {
-    expect(new ApiError(0, 'NETWORK', []).isNetwork).toBe(true);
-    expect(new ApiError(500, 'INTERNAL_ERROR', []).isNetwork).toBe(false);
-    expect(new ApiError(502, 'HTTP_502', []).isNetwork).toBe(false);
-  });
-
-  // Quebra se: o erro de um campo for atribuído a outro (a tela mostraria "e-mail inválido" sob a senha).
-  it('fieldCode devolve o código do campo pedido, ou undefined', () => {
-    const error = new ApiError(400, 'VALIDATION_ERROR', [
-      { field: 'email', code: 'INVALID_EMAIL' },
-      { field: 'password', code: 'PASSWORD_LENGTH' },
-    ]);
-
-    expect(error.fieldCode('password')).toBe('PASSWORD_LENGTH');
-    expect(error.fieldCode('email')).toBe('INVALID_EMAIL');
-    expect(error.fieldCode('document')).toBeUndefined();
-  });
 });
