@@ -74,6 +74,48 @@ test('cadastro, envio, extrato e saída', async ({ page }) => {
   await expect.poll(async () => (await stubCalls()).notify.length, { timeout: 3_000 }).toBe(2);
 });
 
+// Os CNPJs com letras que a Receita emite desde julho de 2026: a loja se cadastra digitando o CNPJ como a pessoa o digita (sem pontuação, em
+// minúsculas), o campo o põe em maiúsculas com a máscara, e quem quer enviar dinheiro a acha pelo CNPJ digitado de outro jeito (mascarado, em minúsculas).
+test('loja com CNPJ alfanumérico: cadastro pela tela e envio achando-a pelo CNPJ', async ({ page, request }) => {
+  test.setTimeout(60_000);
+  const shop = newIdentity({ type: 'MERCHANT', alphanumeric: true });
+  const sender = await newUser(request);
+  const d = shop.document;
+  const masked = `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  expect(d, 'o CNPJ do teste precisa ter letras').toMatch(/[A-Z]/);
+
+  await page.goto('/criar-conta');
+  // O botão de rádio é desenhado pelo texto que o cobre: quem clica é o texto, como a pessoa faz.
+  await page.getByRole('group', { name: 'Eu sou' }).getByText('Loja', { exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Loja' })).toBeChecked();
+  await page.getByLabel('Nome', { exact: true }).fill(shop.firstName);
+  await page.getByLabel('Sobrenome').fill(shop.lastName);
+  await page.getByLabel('E-mail').fill(shop.email);
+  const cnpj = page.getByLabel('CNPJ');
+  await cnpj.fill(d.toLowerCase());
+  await expect(cnpj).toHaveValue(masked);
+  await page.getByLabel('Senha').fill(shop.password);
+  await shot(page, '10-cadastro-loja-cnpj-alfanumerico');
+  await page.getByRole('button', { name: 'Criar minha carteira' }).click();
+  await expect(page).toHaveURL('/carteira');
+  await page.getByRole('button', { name: 'Sair' }).click();
+  await expect(page).toHaveURL('/entrar');
+
+  await signIn(page, sender);
+  await page.goto('/transferir');
+  await page.getByLabel('E-mail ou CPF/CNPJ').fill(masked.toLowerCase());
+  const recipient = page.getByRole('button', { name: new RegExp(shop.lastName) });
+  await expect(recipient).toBeVisible();
+  await expect(recipient).toContainText(`**.${d.slice(2, 5)}.${d.slice(5, 8)}/****-**`);
+  await recipient.click();
+
+  await page.getByLabel('Valor em reais').fill('100');
+  await page.getByRole('button', { name: 'Revisar envio' }).click();
+  await page.getByRole('button', { name: `Enviar R$ 100,00 para ${shop.firstName} ${shop.lastName}` }).click();
+  await expect(page.getByRole('heading', { name: 'Enviado.' })).toBeVisible();
+  await expect(page.getByText(`R$ 100,00 para ${shop.firstName} ${shop.lastName}.`)).toBeVisible();
+});
+
 test('login pela interface volta ao destino pedido', async ({ page, request }) => {
   const user = await newUser(request);
 

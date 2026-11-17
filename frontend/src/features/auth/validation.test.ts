@@ -49,6 +49,23 @@ describe('validateRegister', () => {
     expect(validateRegister({ ...valid, userType: 'MERCHANT', document: '529.982.247-25' })).toEqual({ document: 'INVALID_DOCUMENT' });
   });
 
+  // Quebra se: o CNPJ alfanumérico (que a Receita emite desde julho de 2026) voltar a ser recusado no formulário, as letras passarem a valer
+  // no CPF, ou o dígito verificador do CNPJ alfanumérico deixar de ser conferido.
+  it('o CNPJ alfanumérico vale para a loja (com máscara, em maiúsculas ou minúsculas), nunca para a pessoa', () => {
+    const shop: RegisterForm = { ...valid, userType: 'MERCHANT' };
+    expect(validateRegister({ ...shop, document: '12.ABC.345/01DE-35' })).toEqual({});
+    expect(validateRegister({ ...shop, document: '12.abc.345/01de-35' })).toEqual({});
+    expect(validateRegister({ ...shop, document: '12ABC34501DE35' })).toEqual({});
+    expect(validateRegister({ ...shop, document: '12.ABC.345/01DE-36' })).toEqual({ document: 'INVALID_DOCUMENT' });
+    expect(validateRegister({ ...valid, document: '12.ABC.345/01DE-35' })).toEqual({ document: 'INVALID_DOCUMENT' });
+  });
+
+  // Quebra se: um texto que só tem pontuação deixar de ser "preencha este campo", ou um texto só com letras passar por vazio.
+  it('só pontuação é REQUIRED; letras que não formam um documento são INVALID_DOCUMENT', () => {
+    expect(validateRegister({ ...valid, document: '.-/ ' })).toEqual({ document: 'REQUIRED' });
+    expect(validateRegister({ ...valid, document: 'abc' })).toEqual({ document: 'INVALID_DOCUMENT' });
+  });
+
   // Quebra se: o limite voltar a contar caracteres. O servidor só aceita 72 BYTES (o BCrypt ignora o que vem depois): 40 letras "é" são 80 bytes.
   it('a senha também não passa de 72 bytes em UTF-8', () => {
     expect(validateRegister({ ...valid, password: 'é'.repeat(40) })).toEqual({ password: 'PASSWORD_LENGTH' });

@@ -5,13 +5,15 @@ public final class DocumentMask {
 
     private DocumentMask() {}
 
-    // CPF (11 dígitos) -> ***.982.247-**; CNPJ (14 dígitos) -> **.222.333/****-**; qualquer outro tamanho -> ***
-    public static String mask(String digits) {
-        if (digits != null && digits.length() == 11) {
-            return "***." + digits.substring(3, 6) + "." + digits.substring(6, 9) + "-**";
+    // Recebe o documento normalizado (sem pontuação e em maiúsculas).
+    // CPF (11 caracteres) -> ***.982.247-**; CNPJ (14) -> **.222.333/****-** (no alfanumérico, **.ABC.345/****-**: os seis do meio, sejam
+    // letras ou algarismos); qualquer outro tamanho -> ***
+    public static String mask(String document) {
+        if (document != null && document.length() == 11) {
+            return "***." + document.substring(3, 6) + "." + document.substring(6, 9) + "-**";
         }
-        if (digits != null && digits.length() == 14) {
-            return "**." + digits.substring(2, 5) + "." + digits.substring(5, 8) + "/****-**";
+        if (document != null && document.length() == 14) {
+            return "**." + document.substring(2, 5) + "." + document.substring(5, 8) + "/****-**";
         }
         return "***";
     }

@@ -34,3 +34,16 @@ export function cnpjFrom(seed: number): string {
   const second = checkDigit([...base, first], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
   return [...base, first, second].join('');
 }
+
+/**
+ * CNPJ alfanumérico válido (IN RFB 2.229/2024: 14 caracteres, filial 0001) da semente. A raiz começa com "AB" e termina com a semente
+ * em base 36 (seis caracteres), então sempre tem letras e algarismos misturados, e sementes diferentes dão raízes diferentes (até 36^6).
+ * No cálculo, cada caractere vale o código ASCII menos 48: "A" vale 17.
+ */
+export function alphanumericCnpjFrom(seed: number): string {
+  const base = `AB${(seed % 36 ** 6).toString(36).toUpperCase().padStart(6, '0')}0001`;
+  const values = [...base].map((char) => char.charCodeAt(0) - 48);
+  const first = checkDigit(values, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  const second = checkDigit([...values, first], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  return `${base}${first}${second}`;
+}

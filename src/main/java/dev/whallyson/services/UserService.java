@@ -26,14 +26,14 @@ public class UserService {
     @ConfigProperty(name = "app.signup.initial-balance", defaultValue = "1000.00")
     BigDecimal initialBalance;
 
-    // Cria o usuário: e-mail em minúsculas, documento só com dígitos, senha em BCrypt e saldo inicial por tipo.
+    // Cria o usuário: e-mail em minúsculas, documento normalizado (sem pontuação e em maiúsculas), senha em BCrypt e saldo inicial por tipo.
     // persistAndFlush faz a violação de unicidade acontecer aqui dentro, onde ela pode ser traduzida.
     @Transactional
     public User register(RequestRegister request) {
         User user = new User();
         user.firstName = request.firstName();
         user.lastName = request.lastName();
-        user.document = DocumentValidator.digitsOnly(request.document());
+        user.document = DocumentValidator.normalize(request.document());
         user.email = request.email().trim().toLowerCase(Locale.ROOT);
         user.passwordHash = BcryptUtil.bcryptHash(request.password());
         user.userType = request.userType();
@@ -72,13 +72,14 @@ public class UserService {
     }
 
     // Busca de destinatário: correspondência EXATA, nunca por prefixo, para a busca não virar um diretório de usuários.
-    // Se o texto traz "@" ele é um e-mail; se só tem dígitos e a pontuação de CPF/CNPJ, é um documento.
+    // Se o texto só tem o que um documento pode ter (algarismos, letras de A a Z e a pontuação da máscara) ele é um documento, com
+    // ou sem letras (o CNPJ alfanumérico); se traz "@" ou qualquer outro caractere, é tratado como e-mail.
     // Qualquer outra coisa não encontra ninguém. Nunca devolve o próprio usuário e devolve no máximo um.
     @Transactional
     public List<User> lookup(String q, Long exceptId) {
         String text = q == null ? "" : q.trim();
-        List<User> found = text.matches("[\\d.\\-/\\s]+")
-                ? User.list("document = ?1 and id <> ?2", DocumentValidator.digitsOnly(text), exceptId)
+        List<User> found = DocumentValidator.usesOnlyDocumentCharacters(text)
+                ? User.list("document = ?1 and id <> ?2", DocumentValidator.normalize(text), exceptId)
                 : User.list("email = ?1 and id <> ?2", text.toLowerCase(Locale.ROOT), exceptId);
         return found.stream().limit(1).toList();
     }

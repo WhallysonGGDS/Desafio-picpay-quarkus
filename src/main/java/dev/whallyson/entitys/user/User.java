@@ -28,7 +28,7 @@ public class User extends PanacheEntityBase {
     @Column(nullable = false)
     public String lastName;
 
-    // CPF (usuário comum) ou CNPJ (lojista), guardado só com dígitos
+    // CPF (usuário comum) ou CNPJ (lojista), guardado sem pontuação e em maiúsculas (o CNPJ alfanumérico tem letras)
     @Column(nullable = false)
     public String document;
 
