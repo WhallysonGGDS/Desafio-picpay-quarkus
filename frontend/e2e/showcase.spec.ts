@@ -265,6 +265,20 @@ test.describe('movimento reduzido: o saldo final, sem animação', () => {
     await expect(page.locator('.pin-spacer')).toHaveCount(0);
   });
 
+  // Em movimento reduzido o estado final é o PRIMEIRO que se pinta: nenhuma transição corre quando as cenas aparecem. Uma transição de
+  // 0,01 ms (a regra global) ainda custa um quadro no estado inicial (texto a 0,14 de opacidade ou a 0, o arco por desenhar): quem
+  // abria a página via esse quadro, e o teste da opacidade, logo abaixo, falhava de vez em quando por lê-lo. A leitura é feita no
+  // mesmo instante em que a sexta cena aparece.
+  test('nenhuma transição corre quando as cenas aparecem', async ({ page }) => {
+    await page.goto('/');
+    const running = await page.waitForFunction(() =>
+      document.querySelectorAll('[data-scene]').length === 6
+        ? document.getAnimations().filter((animation) => animation instanceof CSSTransition).map((animation) => (animation as CSSTransition).transitionProperty)
+        : false,
+    );
+    expect(await running.jsonValue()).toEqual([]);
+  });
+
   // RF5: "legível" é opaco de verdade. O toBeVisible do Playwright aceita opacity 0, então a opacidade efetiva (a do elemento
   // vezes a de cada ancestral) é lida à parte, em todo texto de cada cena; e a luz da abertura já nasce desenhada.
   test('o texto de cada cena está opaco e a luz da abertura já está desenhada', async ({ page }) => {

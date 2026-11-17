@@ -230,4 +230,14 @@
     --p: 1;
     --land: 1;
   }
+
+  /* E nada transita: a regra global deixa as transições em 0,01 ms, e isso ainda custa um quadro no estado INICIAL (o texto das cenas a
+     0,14 de opacidade ou a 0, o arco por desenhar) quando o motor escreve o progresso final logo depois do primeiro estilo. Sem a
+     transição, o estado final é o primeiro que se pinta. */
+  [data-scene],
+  [data-scene] *,
+  [data-scene] *::before,
+  [data-scene] *::after {
+    transition: none !important;
+  }
 }
