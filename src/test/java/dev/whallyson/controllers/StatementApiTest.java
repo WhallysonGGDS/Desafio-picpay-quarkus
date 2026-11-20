@@ -9,6 +9,8 @@ import dev.whallyson.support.TestUsers.Session;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.mockito.InjectMock;
 import io.restassured.response.Response;
+import jakarta.inject.Inject;
+import org.hibernate.SessionFactory;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +36,9 @@ class StatementApiTest {
     @InjectMock
     @RestClient
     SendNotification notifier;
+
+    @Inject
+    SessionFactory sessionFactory;
 
     Session a;
     Session b;
@@ -53,6 +59,31 @@ class StatementApiTest {
     Response get(Session s, String query) {
         String url = query.isEmpty() ? "/transaction" : "/transaction?" + query;
         return given().cookie("arco_session", s.cookie()).get(url);
+    }
+
+    // Consultas ao banco que um GET do extrato faz. Fica o menor de três medidas: um aviso que ainda esteja sendo gravado em
+    // segundo plano (depois do commit da transferência) soma consultas à medida e não pode inflar o resultado.
+    long statementQueries(Session s) {
+        long fewest = Long.MAX_VALUE;
+        for (int i = 0; i < 3; i++) {
+            long before = sessionFactory.getStatistics().getPrepareStatementCount();
+            get(s, "").then().statusCode(200);
+            fewest = Math.min(fewest, sessionFactory.getStatistics().getPrepareStatementCount() - before);
+        }
+        return fewest;
+    }
+
+    // Quebra se: o extrato passar a ler remetente e destinatário com uma consulta por pessoa (o N+1): o número de consultas passaria a
+    // crescer com quantas pessoas diferentes aparecem na página. Compara quem tem 2 contrapartes com quem tem 6. Quem evita o N+1 é a
+    // leitura em lote do Quarkus (as pessoas vêm num único "where id in (...)", até 16 por consulta); com ela desligada
+    // (quarkus.hibernate-orm.fetch.batch-size=1) este teste reprova (5 consultas contra 9).
+    @Test
+    void statementQueryCount_doesNotGrowWithTheNumberOfCounterparties() {
+        Session d = TestUsers.registerWithBalance(UserType.COMMON, "500.00");
+        for (int i = 0; i < 6; i++) {
+            transfer(d, TestUsers.register(UserType.COMMON).id(), "1.00");
+        }
+        assertEquals(statementQueries(a), statementQueries(d));
     }
 
     // Quebra se: a ordem deixar de ser a mais recente primeiro, ou a direção for calculada para o lado errado.

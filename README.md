@@ -958,7 +958,7 @@ Os testes **nunca** chamam o `util.devi.tools`: os dois clientes REST externos s
 | `UserSearchApiTest` | Busca exata, sem prefixo, sem o próprio usuário, só dados públicos; o CNPJ alfanumérico achado com máscara, em minúsculas ou sem pontuação, e não achado por trecho, com texto em volta ou com letras de outros alfabetos que a maiúscula do Unicode aproximaria |
 | `TransferApiTest` | Regras da transferência, remetente sempre o logado, formatos de valor, autorizador recusando ou fora do ar, *rollback*; **concorrência** com barreiras: o autorizador é chamado sem trava de saldo, as regras são conferidas de novo sob a trava (duas transferências que passam juntas não deixam a conta negativa) e transferências cruzadas não travam |
 | `NotificationApiTest` · `NotificationMessagesTest` | Avisos fora do caminho da resposta (um notificador lento não atrasa o `201`), em ordem, com e-mail e mensagem; retentativas; falha de aviso não desfaz a transferência; transferência recusada não avisa ninguém |
-| `StatementApiTest` | Extrato: ordem, filtro, paginação (inclusive a que não é número: `400`), só as próprias transferências, nada sensível |
+| `StatementApiTest` | Extrato: ordem, filtro, paginação (inclusive a que não é número: `400`), só as próprias transferências, nada sensível; o número de consultas ao banco não cresce com as pessoas da página (sem N+1: o Quarkus lê as pessoas em lote, e o teste reprova com o lote desligado) |
 | `SeedDataTest` · `OpenApiContractTest` | Contas de demonstração (idempotentes); rotas e dinheiro-como-string no contrato OpenAPI |
 | `SpaServingIT` | Contra o jar de produção: o front na raiz e as rotas dele caindo no `index.html`, JSON `404` para quem não é navegador, compressão, cache, cabeçalhos de segurança e a política de conteúdo inteira, e o cookie de sessão com `Secure`, `HttpOnly` e `SameSite=Strict` |
 | `SpaFallbackProfileTest` | O filtro das rotas do front vale em produção e em desenvolvimento, e só fica de fora do perfil de teste (o perfil de desenvolvimento não roda nos testes automáticos, então a anotação é conferida à parte) |
@@ -979,7 +979,7 @@ node scripts/smoke-api.mjs
 
 ### Testes do front-end
 
-Hoje: **191** testes Java e **13** de integração sobre o artefato, **600** testes de unidade e de componente (Vitest, 39 arquivos) e **168** de ponta a ponta (Playwright: 167 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
+Hoje: **192** testes Java e **13** de integração sobre o artefato, **598** testes de unidade e de componente (Vitest, 39 arquivos) e **172** de ponta a ponta (Playwright: 171 rodam em cada execução e 1 é pulado de propósito, porque só vale no desktop).
 
 ```bash
 npm --prefix frontend run typecheck && npm --prefix frontend test
@@ -996,7 +996,7 @@ O Playwright sobe sozinho o [stub](#sem-acesso-ao-utildevitools-stub-local) (por
 | :--- | :--- |
 | `app.spec.ts` | Cadastro pela tela, envio de ponta a ponta, extrato, saída e os dois avisos; login que volta ao destino pedido; lojista que não envia; loja com CNPJ alfanumérico (cadastro pela tela, digitando em minúsculas, e envio a ela achando-a pelo CNPJ com máscara) |
 | `failures.spec.ts` | Autorizador que recusa e que cai, saldo insuficiente, sessão que vence (no envio e ao abrir o extrato) e resultado desconhecido sem reenvio |
-| `showcase.spec.ts` | As seis cenas em quatro tamanhos de janela: progresso, saldo caindo com o scroll, CTA e links, movimento reduzido, cenas fixadas |
+| `showcase.spec.ts` | As seis cenas em quatro tamanhos de janela: progresso, saldo caindo com o scroll, CTA e links, movimento reduzido (inclusive que nenhuma transição corre quando as cenas aparecem: o estado final é o primeiro que se pinta), cenas fixadas |
 | `quality.spec.ts` | axe-core, 320 px, texto cortado ou sobreposto em 33 tamanhos de janela, as fronteiras da janela compacta (inclusive o celular em pé, que continua com as cenas fixadas), foco coberto, movimento reduzido sem atrasos, console limpo, fontes e origens, ícone e título de cada tela (a 404 também), o alinhamento do texto do link da 404, foco e rolagem ao trocar de tela (inclusive com a rolagem suave da vitrine ainda andando), política de segurança do conteúdo (CSP) |
 | `hostile.spec.ts` | Entradas hostis: `?next=` que tentaria sair da origem, valores como `1e3` ou `0,001`, CPF com letras e três cliques rápidos em "Enviar" |
 

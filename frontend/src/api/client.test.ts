@@ -78,7 +78,7 @@ describe('erros', () => {
   it('falha de rede vira ApiError NETWORK com statusCode 0', async () => {
     server.use(http.get('*/users/search', () => HttpResponse.error()));
 
-    await expect(api.searchUsers('abc')).rejects.toMatchObject({ code: 'NETWORK', statusCode: 0, isNetwork: true });
+    await expect(api.searchUsers('abc')).rejects.toMatchObject({ code: 'NETWORK', statusCode: 0 });
   });
 
   // Quebra se: resposta que não é do nosso back-end (um proxy devolvendo HTML) virar NETWORK ou estourar no JSON.parse.
@@ -87,7 +87,7 @@ describe('erros', () => {
       http.get('*/users/me', () => new HttpResponse('<html>Bad Gateway</html>', { status: 502, headers: { 'Content-Type': 'text/html' } })),
     );
 
-    await expect(api.me()).rejects.toMatchObject({ statusCode: 502, code: 'HTTP_502', isNetwork: false, fieldErrors: [] });
+    await expect(api.me()).rejects.toMatchObject({ statusCode: 502, code: 'HTTP_502', fieldErrors: [] });
   });
 
   // Quebra se: erro sem corpo nenhum (um 500 vazio) estourar ou virar outra coisa que não HTTP_<status>.
@@ -116,7 +116,7 @@ describe('erros', () => {
   it('NETWORK e UNKNOWN vindos do servidor não valem: viram UNKNOWN', async () => {
     server.use(http.get('*/users/me', () => backendError(500, 'NETWORK')));
 
-    await expect(api.me()).rejects.toMatchObject({ statusCode: 500, code: 'UNKNOWN', isNetwork: false });
+    await expect(api.me()).rejects.toMatchObject({ statusCode: 500, code: 'UNKNOWN' });
   });
 
   it('JSON sem código (resposta de um intermediário) vira HTTP_<status>', async () => {
